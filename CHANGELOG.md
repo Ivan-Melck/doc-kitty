@@ -35,12 +35,22 @@ under either name. (The heading date is the release-prep date; the
 ### Added
 
 - **npm release workflow** — `.github/workflows/release.yml` publishes the
-  toolkit to npm when a `v<version>` tag is pushed. It fails closed unless the tag
-  equals `src/package.json` `version` and the CHANGELOG has a section for it,
-  re-runs typecheck, lint, unit tests, and the clean-room consumption test and
-  its self-test, then runs `npm publish --provenance --access public`. Manual
-  dispatch is a dry-run rehearsal that never publishes. The runbook is
+  toolkit to npm when a `v<version>` tag is pushed. A read-only `verify` job
+  fails closed unless the tag equals `src/package.json` `version`, the tagged
+  commit is on `main`, and the CHANGELOG has a section for it. It re-runs
+  typecheck, lint, unit tests, and the clean-room consumption test with its
+  self-test, then packs the tarball. A separate `publish` job, the only one
+  with `id-token: write` and `NPM_TOKEN`, installs nothing and runs
+  `npm publish --provenance --access public` on that tarball. Prerelease
+  versions publish under the `next` dist-tag. A manual dispatch is a dry-run
+  rehearsal and never publishes, even on a tag ref. The runbook is
   [`docs/ops/releasing.md`](docs/ops/releasing.md).
+- **The docs gates ship as package binaries** — `dockitty-validate-frontmatter`,
+  `dockitty-check-links`, `dockitty-assert-no-broken-links`,
+  `dockitty-check-redirect-coverage`, `dockitty-validate-catalog`,
+  `dockitty-new-doc`, and `dockitty-scaffold`, so an adopter runs
+  `pnpm exec dockitty-check-links docs`. The scripts are also exported as
+  `@spec-kitty/doc-toolkit/scripts/*`.
 - **Attribution for the upstream Common Docs specification** (`#105`) — DocKitty
   is based on the **Common Docs** convention created by **Christopher Skene**. A
   new root `NOTICE` reproduces the upstream MIT notice (spec v1.2, © Christopher
@@ -72,10 +82,33 @@ under either name. (The heading date is the release-prep date; the
 - **The consumption harness reads the expected version from `src/package.json`**
   instead of hardcoding `0.1.0`, and accepts both the npm ≤ 11 (array) and npm 12
   (object) shapes of `npm pack --json` output.
+- **The toolkit's runtime imports are declared dependencies** — `unified`,
+  `remark-parse`, `remark-gfm`, `remark-directive`, and `remark-smartypants` are
+  imported by shipped code (`lib/config.ts`, `lib/remark/markua-normalise.ts`,
+  `lib/glossary/page-processor.ts`) but were only devDependencies or not
+  declared at all, so a non-hoisted install (`hoist: false`) failed with
+  `MODULE_NOT_FOUND`. They are now `dependencies`, and a new unit test
+  (`src/tests/package-runtime-deps.test.ts`) fails when a shipped file imports
+  an undeclared package.
+- **The consumption test pins the toolkit tarball's integrity at run time** —
+  packed tarballs are not byte-identical across machines, so the committed
+  fixture lockfile's hash for the local `toolkit.tgz` failed on CI with
+  `ERR_PNPM_TARBALL_INTEGRITY`. Before each frozen install, the harness now
+  rewrites that one entry to the sha512 of the tarball it just packed and
+  restores the file afterwards. Every registry integrity stays frozen.
 - **Consumer setup guide** — the prerequisite is now Node ≥ 22, matching the
   package's `engines` (it said Node ≥ 20), the pinned-release example names
   `0.1.1`, and the install step no longer calls `@astrojs/sitemap` a peer (it is a
   regular dependency of the toolkit).
+
+### Fixed
+
+- **The docs gates no longer exit 0 without running when started through a
+  symlink** — the scripts ran their CLI only when `import.meta.url` equalled
+  `process.argv[1]`. Installed behind pnpm's `node_modules` symlink or a `.bin`
+  shim, argv keeps the symlink path, so
+  `node node_modules/@spec-kitty/doc-toolkit/scripts/validate-frontmatter.mjs`
+  did nothing and reported success. The guard now compares real paths.
 
 ## [0.1.0] — 2026-09-09
 
