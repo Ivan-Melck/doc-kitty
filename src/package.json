@@ -1,9 +1,28 @@
 {
   "name": "@spec-kitty/doc-toolkit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reusable Astro + Starlight toolkit for DocKitty — a documentation convention based on Common Docs: schema, README-as-index loader, and rss/llms.txt/agent-API route handlers.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spec-kitty/doc-kitty.git",
+    "directory": "src"
+  },
+  "homepage": "https://spec-kitty.github.io/doc-kitty/",
+  "bugs": {
+    "url": "https://github.com/spec-kitty/doc-kitty/issues"
+  },
+  "keywords": [
+    "astro",
+    "starlight",
+    "documentation",
+    "docs-as-code",
+    "dockitty",
+    "common-docs",
+    "llms-txt",
+    "agent-docs"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -60,6 +79,7 @@
     "vitest": "^2.1.0"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   }
 }

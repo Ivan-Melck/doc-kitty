@@ -102,8 +102,10 @@ function packedFiles(): string[] {
   if (res.status !== 0) {
     throw new Error(`npm pack --dry-run failed:\n${res.stderr}`);
   }
+  // npm ≤ 11 prints an array of pack results; npm 12 an object keyed by name.
   const parsed = JSON.parse(res.stdout);
-  return (parsed[0].files as Array<{ path: string }>).map((f) => f.path);
+  const first = (Array.isArray(parsed) ? parsed : Object.values(parsed))[0];
+  return (first.files as Array<{ path: string }>).map((f) => f.path);
 }
 
 /**

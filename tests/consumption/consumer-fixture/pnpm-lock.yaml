@@ -982,8 +982,8 @@ packages:
     resolution: {integrity: sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg==}
 
   '@spec-kitty/doc-toolkit@file:toolkit.tgz':
-    resolution: {integrity: sha512-7B/diYH1kwChMXlTvwA8TekdoXSV5zuk8nvaUTnUp+OlYfECmpUXtdcuXE+svnWvTDl+E/znGoPljDzo71rWiA==, tarball: file:toolkit.tgz}
-    version: 0.1.0
+    resolution: {integrity: sha512-cVnwoU+WmfAtuPADU7GHfzTRf0NHAdz3DmKkmiXBE3t4ofedDBbzlNYKWCa5rJXYxoZF101SdWFf1yuNSxRADg==, tarball: file:toolkit.tgz}
+    version: 0.1.1
     engines: {node: '>=22'}
     peerDependencies:
       '@astrojs/starlight': '>=0.32.0 <0.33.0'
