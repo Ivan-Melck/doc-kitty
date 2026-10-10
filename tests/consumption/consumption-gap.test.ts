@@ -60,6 +60,7 @@ import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { pinToolkitIntegrity } from './scripts/pin-toolkit-integrity.mjs';
 
 // ── repository layout (derived from this file's location) ────────────────────
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // tests/consumption
@@ -274,6 +275,10 @@ function packToolkit(fixtureDir: string): void {
   if (existsSync(target)) rmSync(target);
   cpSync(path.join(fixtureDir, packed), target);
   rmSync(path.join(fixtureDir, packed));
+  // Point the crafted copy's lock entry at THIS tarball: packed bytes are not
+  // reproducible across machines (see scripts/pin-toolkit-integrity.mjs). The
+  // copy is temporary, so there is nothing to restore.
+  pinToolkitIntegrity(fixtureDir);
 }
 
 /** Install the crafted fixture in isolation, reusing the store where possible. */
