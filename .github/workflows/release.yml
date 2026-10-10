@@ -1,17 +1,23 @@
 # Release — publish @spec-kitty/doc-toolkit (src/) to npm on a version tag.
 #
 # Runbook: docs/ops/releasing.md. Tag convention matches the existing v0.1.0 tag:
-# `v<semver>`, and the tag MUST equal `src/package.json` `version` (checked below,
-# fail-closed). Re-runs the standing gates (typecheck, lint, unit tests, and the
-# clean-room consumption test against the packed tarball) before publishing, so a
-# tag on a red commit never reaches the registry.
+# `v<semver>`. Two jobs:
+#
+#   verify  — read-only. Fails closed unless the tag equals `src/package.json`
+#             `version`, the tagged commit is on `main`, and the CHANGELOG has a
+#             section for the version. Re-runs typecheck, lint, unit tests, and the
+#             clean-room consumption test, then packs the tarball it verified and
+#             uploads it as an artifact.
+#   publish — the ONLY job holding `id-token: write` and NPM_TOKEN. It installs
+#             nothing (so no dependency lifecycle script ever sees OIDC or the
+#             token), downloads the verified tarball, and publishes exactly it.
 #
 # Fork-safety: the `push: tags` + `workflow_dispatch` triggers run only in the base
-# repo, never from fork PRs, so the NPM_TOKEN secret and the OIDC id-token are never
-# exposed to fork code. No `pull_request`/`pull_request_target` here.
+# repo, never from fork PRs. No `pull_request`/`pull_request_target` here.
 #
-# Manual dispatch is a REHEARSAL: it runs every gate plus `npm publish --dry-run`
-# and never publishes. Only a pushed `v*` tag publishes.
+# Manual dispatch is a REHEARSAL on any ref: it runs `verify` plus
+# `npm publish --dry-run` and never publishes. `publish` runs only for a pushed
+# `v*` tag (event `push`), never for a dispatch, even one started on a tag ref.
 name: Release
 
 on:
@@ -19,11 +25,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
-# Least privilege: read the repo; `id-token: write` lets npm mint a signed
-# provenance attestation linking the published tarball to this workflow run.
+# Default for every job: read the repo, nothing more. `publish` widens this to
+# add `id-token: write` for its own job only.
 permissions:
   contents: read
-  id-token: write
 
 # Never run two publishes at once, and never cancel one in flight.
 concurrency:
@@ -31,13 +36,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      dist_tag: ${{ steps.meta.outputs.dist_tag }}
     steps:
-      - name: Checkout
+      - name: Checkout (full history, for the on-main check)
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      # Node/pnpm setup COPIED from ci.yml (SHA-pinned, node 22, pnpm cache), plus
-      # `registry-url` so setup-node writes an .npmrc that reads NODE_AUTH_TOKEN.
+        with:
+          fetch-depth: 0
+      # Node/pnpm setup COPIED from ci.yml (SHA-pinned, node 22, pnpm cache).
       - name: Enable corepack
         run: corepack enable
       - name: Set up Node 22 + pnpm cache
@@ -45,27 +54,44 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      # Fail closed when the tag and the package version disagree, or when the
-      # CHANGELOG has no section for the version being released.
-      - name: Check tag, package version, and CHANGELOG agree
+      # Fail closed on any disagreement between the tag, the package version, the
+      # CHANGELOG, and main. A prerelease version (anything with a `-`, e.g.
+      # 0.2.0-rc.1) publishes under the `next` dist-tag so `latest` never moves to it.
+      - name: Check tag, version, CHANGELOG, and main agree
+        id: meta
         env:
+          EVENT_NAME: ${{ github.event_name }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           VERSION=$(node -p "require('./src/package.json').version")
           echo "src/package.json version: $VERSION"
-          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "v$VERSION" ]; then
-            echo "::error::tag $REF_NAME does not match src/package.json version v$VERSION"
-            exit 1
+          if [ "$EVENT_NAME" = "push" ]; then
+            if [ "$REF_TYPE" != "tag" ] || [ "$REF_NAME" != "v$VERSION" ]; then
+              echo "::error::tag $REF_NAME does not match src/package.json version v$VERSION"
+              exit 1
+            fi
+            git fetch --no-tags origin main
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "::error::tagged commit $GITHUB_SHA is not on origin/main; tag a merged main commit"
+              exit 1
+            fi
           fi
-          if ! grep -q "^## \[$VERSION\]" CHANGELOG.md; then
+          VERSION_RE=$(printf '%s' "$VERSION" | sed 's/[][\.*^$+?(){}|/]/\\&/g')
+          if ! grep -qE "^## \[$VERSION_RE\]" CHANGELOG.md; then
             echo "::error::CHANGELOG.md has no '## [$VERSION]' section"
             exit 1
           fi
+          case "$VERSION" in
+            *-*) DIST_TAG=next ;;
+            *) DIST_TAG=latest ;;
+          esac
+          echo "npm dist-tag: $DIST_TAG"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Typecheck
         run: pnpm typecheck
@@ -80,14 +106,45 @@ jobs:
       - name: Consumption packaging-gap + charter self-test
         run: ( cd src && ./node_modules/.bin/vitest run --root ../tests/consumption )
 
-      - name: Publish rehearsal (dry run)
-        if: github.ref_type != 'tag'
-        working-directory: src
-        run: npm publish --dry-run --access public
+      - name: Pack the verified tarball
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          ( cd src && npm pack --pack-destination "$RUNNER_TEMP/release" )
+          ls -l "$RUNNER_TEMP/release"
+      - name: Publish rehearsal (dry run, never publishes)
+        if: github.event_name != 'push'
+        env:
+          DIST_TAG: ${{ steps.meta.outputs.dist_tag }}
+        run: npm publish "$RUNNER_TEMP"/release/*.tgz --dry-run --access public --tag "$DIST_TAG"
+      - name: Upload the verified tarball
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-tarball
+          path: ${{ runner.temp }}/release/*.tgz
+          retention-days: 7
+          if-no-files-found: error
 
+  publish:
+    needs: verify
+    # Only a pushed `v*` tag publishes; a manual dispatch never does.
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance: signs the attestation for this run
+    steps:
+      - name: Set up Node 22 (npm registry auth)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Download the verified tarball
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: npm-tarball
+          path: release
       - name: Publish to npm (with provenance)
-        if: github.ref_type == 'tag'
-        working-directory: src
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance --access public
+          DIST_TAG: ${{ needs.verify.outputs.dist_tag }}
+        run: npm publish release/*.tgz --provenance --access public --tag "$DIST_TAG"
