@@ -32,7 +32,7 @@
  * Zero new dependencies: `gray-matter` is already vendored (used by the
  * frontmatter gate); everything else is string/regex work.
  */
-import { readdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, statSync, readFileSync, writeFileSync, realpathSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import matter from 'gray-matter';
@@ -288,6 +288,18 @@ function main(argv) {
 }
 
 // Run the CLI only when invoked directly, so the module can be imported by tests.
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+// CLI guard. Compare against the REAL path of argv[1]: when the package is
+// installed behind a symlink (pnpm's node_modules, or a node_modules/.bin shim),
+// import.meta.url is the resolved path while argv[1] keeps the symlink path, so a
+// plain comparison would never match and the gate would exit 0 having done nothing.
+function invokedDirectly() {
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1] ?? '')).href;
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   main(process.argv);
 }
