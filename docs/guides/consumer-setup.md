@@ -2,7 +2,7 @@
 title: Consumer setup — build a docsite from the published toolkit
 description: The install → configure → theme → build path for a net-new adopter, using only the published @spec-kitty/doc-toolkit surface.
 doc_status: active
-updated: 2026-09-09
+updated: 2026-10-10
 type: Guide
 kind: How-To
 tags: [adoption, setup, consumer, theming, release]
@@ -37,7 +37,7 @@ reuse contract (SC-005) and is machine-checked by
 
 ## Prerequisites
 
-- Node ≥ 20 and pnpm (`corepack enable`).
+- Node ≥ 22 (the package's `engines` floor) and pnpm (`corepack enable`).
 - A project directory with a `docs/` tree that follows the
   [DocKitty](/context/convention/) (section folders, a
   `README.md` section index per folder, required frontmatter). An empty tree is
@@ -45,15 +45,18 @@ reuse contract (SC-005) and is machine-checked by
 
 ## 1. Install the toolkit and its peers
 
-The toolkit declares Astro, Starlight, and the sitemap integration as peers, so
-install them alongside it — pin the version you want to track:
+The toolkit declares Astro and Starlight as peers, so install them alongside it.
+`@astrojs/sitemap` ships as a regular dependency of the toolkit, so listing it
+yourself is optional; the command keeps it explicit, as the consumption-test
+fixture does. Pin the version you want to track:
 
 ```sh
 pnpm add @spec-kitty/doc-toolkit astro @astrojs/starlight @astrojs/sitemap
 ```
 
-Pin a real release (for example `@spec-kitty/doc-toolkit@0.1.0`) rather than a
-floating range so your build is reproducible against a known published surface.
+Pin a real release (for example `@spec-kitty/doc-toolkit@0.1.1`, the first
+version published to npm) rather than a floating range so your build is
+reproducible against a known published surface.
 
 ## 2. `astro.config.mjs` — wire the integrations
 

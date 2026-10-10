@@ -20,7 +20,7 @@
  *        - realpath(node_modules/@spec-kitty/doc-toolkit) is INSIDE the fixture,
  *        - is NOT under the repo `src/`,
  *        - is NOT a symlink (the fully-resolved target is a concrete dir),
- *        - its package.json version === the packed 0.1.0,
+ *        - its package.json version === the version in src/package.json,
  *        - a grep proves ZERO `../src` toolkit-source imports in the fixture.
  *      Any miss fails closed.
  *   4. Source-hidden build: rename repo `src/` away so it is UNRESOLVABLE, run
@@ -63,7 +63,10 @@ const PKG_SCRIPTS = path.join(FIXTURE_DIR, 'node_modules', '@spec-kitty', 'doc-t
 
 // MUST match `base` in the fixture's astro.config.mjs (INV-2).
 const BASE = '/consumer-fixture';
-const EXPECTED_VERSION = '0.1.0';
+// The packed version is whatever src/package.json declares — read once at
+// startup (before src/ is hidden in step 4) so a version bump never needs a
+// matching edit here.
+const EXPECTED_VERSION = JSON.parse(readFileSync(path.join(SRC_DIR, 'package.json'), 'utf8')).version;
 const TOOLKIT_MODULE = path.join(FIXTURE_DIR, 'node_modules', '@spec-kitty', 'doc-toolkit');
 
 const BOOTSTRAP = process.env.DK_CONSUMPTION_BOOTSTRAP === '1';
@@ -184,7 +187,10 @@ function pack() {
   }
   let filename;
   try {
-    filename = JSON.parse(res.stdout)[0].filename;
+    // npm ≤ 11 prints an array of pack results; npm 12 prints an object keyed
+    // by package name. Accept both.
+    const parsed = JSON.parse(res.stdout);
+    filename = (Array.isArray(parsed) ? parsed : Object.values(parsed))[0].filename;
   } catch {
     die(`could not parse npm pack --json output:\n${res.stdout}`);
   }
@@ -254,7 +260,7 @@ function assertIsolation() {
   if (lstatSync(resolved).isSymbolicLink()) {
     die(`resolved toolkit path is itself a symlink: ${resolved}`);
   }
-  // (d) version must be exactly the packed 0.1.0.
+  // (d) version must be exactly the packed src/package.json version.
   const pkg = JSON.parse(readFileSync(path.join(resolved, 'package.json'), 'utf8'));
   if (pkg.version !== EXPECTED_VERSION) {
     die(`installed toolkit version is ${pkg.version}, expected ${EXPECTED_VERSION}`);

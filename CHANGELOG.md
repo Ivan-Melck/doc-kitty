@@ -6,20 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### 🛠️ Fixed
+## [0.1.1] — 2026-10-10
 
-- **The on-demand "Update a11y baselines" workflow can now regenerate baselines
-  for branches whose example includes the PlantUML demonstrator** (`#106`) —
-  its `regenerate` job runs inside the pinned Playwright container and builds
-  the example with an auto-detected BUILD diagram-render mode, but declared no
-  PlantUML render server, so the build-mode PlantUML assertion failed and the
-  job aborted at the "Regenerate visual baselines" step before ever reaching
-  the detect/commit/PR steps. The job now carries the same render setup as
-  `ci.yml`'s `build-example` (a `plantuml/plantuml-server:jetty` service,
-  deterministic BUILD render env, a wait-for-ready step, and `@beoe` Mermaid
-  render-cache parity), addressed by the service's Docker-network name
-  (`http://plantuml:8080/svg/`) rather than a `localhost` port, since this job
-  runs inside a container rather than directly on the runner.
+**The first version published to npm**, as `@spec-kitty/doc-toolkit`. `0.1.0` was
+tagged under the previous name (`@commondocs-kitty/toolkit`) and was never
+published, so `0.1.1` is the first installable release. The rename below is
+breaking only for anyone who built from a source checkout; no npm consumer exists
+under either name. (The heading date is the release-prep date; the
+[releasing runbook](docs/ops/releasing.md) has you update it to the tag date.)
 
 ### 💥 Breaking
 
@@ -40,6 +34,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **npm release workflow** — `.github/workflows/release.yml` publishes the
+  toolkit to npm when a `v<version>` tag is pushed. It fails closed unless the tag
+  equals `src/package.json` `version` and the CHANGELOG has a section for it,
+  re-runs typecheck, lint, unit tests, and the clean-room consumption test and
+  its self-test, then runs `npm publish --provenance --access public`. Manual
+  dispatch is a dry-run rehearsal that never publishes. The runbook is
+  [`docs/ops/releasing.md`](docs/ops/releasing.md).
 - **Attribution for the upstream Common Docs specification** (`#105`) — DocKitty
   is based on the **Common Docs** convention created by **Christopher Skene**. A
   new root `NOTICE` reproduces the upstream MIT notice (spec v1.2, © Christopher
@@ -62,11 +63,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   [ADR-0042](docs/adr/0042-native-documentation-charter.md) and the consumer
   charter reference + migration guide.
 
+### Changed
+
+- **Package metadata for publishing** — `src/package.json` gains `repository`
+  (with `directory: src`, which npm provenance checks against the building
+  repository), `homepage`, `bugs`, and `keywords`, and `publishConfig` now sets
+  `provenance: true` next to `access: public`.
+- **The consumption harness reads the expected version from `src/package.json`**
+  instead of hardcoding `0.1.0`, and accepts both the npm ≤ 11 (array) and npm 12
+  (object) shapes of `npm pack --json` output.
+- **Consumer setup guide** — the prerequisite is now Node ≥ 22, matching the
+  package's `engines` (it said Node ≥ 20), the pinned-release example names
+  `0.1.1`, and the install step no longer calls `@astrojs/sitemap` a peer (it is a
+  regular dependency of the toolkit).
+
 ## [0.1.0] — 2026-09-09
 
 First tagged release (tagged as `@commondocs-kitty/toolkit` / "Common Docs —
 Kitty Variation"; the project was renamed to **DocKitty** afterward — see
-[Unreleased]). Collects the delivered MVP of the DocKitty toolkit:
+[0.1.1]). Collects the delivered MVP of the DocKitty toolkit:
 point it at a documentation tree that follows the convention
 and get a Starlight docsite plus `sitemap.xml`, `rss.xml`, `llms.txt`, and a JSON
 agent-API out of the box. See [`docs/plans/roadmap.md`](docs/plans/roadmap.md) for
@@ -125,5 +140,6 @@ the feature-by-feature status and the decision records under
 - Build-time PlantUML rendering requires a PlantUML service (provided in CI); a
   local build without it skips PlantUML figures.
 
-[Unreleased]: https://github.com/spec-kitty/doc-kitty/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/spec-kitty/doc-kitty/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/spec-kitty/doc-kitty/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/spec-kitty/doc-kitty/releases/tag/v0.1.0
