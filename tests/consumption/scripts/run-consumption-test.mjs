@@ -45,9 +45,11 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pinToolkitIntegrity } from './pin-toolkit-integrity.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url)); // tests/consumption/scripts
 const CONSUMPTION_DIR = path.dirname(SCRIPT_DIR); // tests/consumption
@@ -223,6 +225,20 @@ function install() {
   // reachable (NFR-004: frozen lockfile). Kept on the CLI (never in a committed
   // config) so the blast radius is one command in this test-only orchestrator,
   // and assertBuildScriptAllowlist() below fails closed on any NEW build script.
+  // The packed tarball's sha512 differs per machine (see pin-toolkit-integrity.mjs),
+  // so point the ONE `file:toolkit.tgz` lock entry at the tarball just packed and
+  // restore the committed lockfile on exit. Every registry integrity stays frozen.
+  // Bootstrap regenerates the lockfile, so it skips the pin.
+  if (!BOOTSTRAP) {
+    let pinned;
+    try {
+      pinned = pinToolkitIntegrity(FIXTURE_DIR);
+    } catch (err) {
+      die(`could not pin the toolkit tarball integrity: ${err.message}`);
+    }
+    process.on('exit', () => writeFileSync(pinned.lockPath, pinned.original));
+    console.log(`✓ pinned toolkit.tgz lock entry to the packed tarball (${pinned.integrity.slice(0, 19)}…)`);
+  }
   runOrDie(
     'pnpm',
     ['install', frozen, '--ignore-workspace', '--config.dangerouslyAllowAllBuilds=true'],
