@@ -36,7 +36,17 @@
     "./layouts/*": "./layouts/*",
     "./themes/*": "./themes/*",
     "./assets/*": "./assets/*",
-    "./styles/*": "./styles/*"
+    "./styles/*": "./styles/*",
+    "./scripts/*": "./scripts/*"
+  },
+  "bin": {
+    "dockitty-validate-frontmatter": "./scripts/validate-frontmatter.mjs",
+    "dockitty-check-links": "./scripts/check-links.mjs",
+    "dockitty-assert-no-broken-links": "./scripts/assert-no-broken-links.mjs",
+    "dockitty-check-redirect-coverage": "./scripts/check-redirect-coverage.mjs",
+    "dockitty-validate-catalog": "./scripts/validate-catalog.mjs",
+    "dockitty-new-doc": "./scripts/new-doc.mjs",
+    "dockitty-scaffold": "./scripts/scaffold.mjs"
   },
   "files": [
     "index.ts",
@@ -66,16 +76,19 @@
     "astro-plantuml": "1.0.0",
     "gray-matter": "^4.0.3",
     "mermaid": "11.17.1",
+    "remark-directive": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-smartypants": "^3.0.3",
     "reveal.js": "6.0.1",
+    "unified": "^11.0.5",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@astrojs/starlight": "^0.32.6",
     "astro": "^5.2.0",
     "mdast-util-to-hast": "13.2.1",
-    "remark-parse": "11.0.0",
     "typescript": "^5.7.0",
-    "unified": "11.0.5",
     "vitest": "^2.1.0"
   },
   "publishConfig": {

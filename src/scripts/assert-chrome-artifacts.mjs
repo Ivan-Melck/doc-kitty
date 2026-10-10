@@ -17,6 +17,8 @@
  * Zero runtime dependencies (NFR-006): HTML/CSS are string-searched; the gzip
  * Pagefind fragments are decompressed with the Node built-in `node:zlib`.
  */
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { readFile, readdir } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
@@ -1449,8 +1451,15 @@ export async function assertChromeArtifacts(distDir) {
 
 // Standalone entry point: `node src/scripts/assert-chrome-artifacts.mjs <distDir>`.
 // import.meta.main is not available on all Node 22 minors, so compare argv paths.
-const invokedDirectly =
-  process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+// Resolve argv[1] to its real path: behind a symlink (pnpm node_modules, a .bin
+// shim) import.meta.url is the resolved path and would otherwise never match.
+const invokedDirectly = (() => {
+  try {
+    return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
 if (invokedDirectly) {
   const distArg = process.argv[2];
   if (!distArg) fail('usage: node src/scripts/assert-chrome-artifacts.mjs <distDir>');

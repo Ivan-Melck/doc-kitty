@@ -279,6 +279,21 @@ astro build
 `llms.txt`, and the `api/*.json` agent-API. Deploy `dist/` to any static host;
 a based deployment (a sub-path) is covered by the `base` you set in step 2.
 
+### Run the gates on your tree
+
+The toolkit ships its bare-Node gates as package binaries, so run them through
+your package manager rather than by a path into `node_modules`:
+
+```sh
+pnpm exec dockitty-validate-frontmatter docs --index-basename README,index
+pnpm exec dockitty-check-links docs
+astro build && pnpm exec dockitty-assert-no-broken-links dist --base /docs --site https://you.example.com
+```
+
+The other binaries are `dockitty-check-redirect-coverage`,
+`dockitty-validate-catalog`, `dockitty-new-doc`, and `dockitty-scaffold`. The
+same files are also importable as `@spec-kitty/doc-toolkit/scripts/<name>.mjs`.
+
 ## 7. Govern your docs — the documentation charter
 
 Everything above renders and validates a *default* docsite. To change what
@@ -382,6 +397,7 @@ Every entry point above is part of the toolkit's published surface:
 | Feed / agent-API route factories | `@spec-kitty/doc-toolkit/routes` |
 | Deck layout + slug helper | `@spec-kitty/doc-toolkit/layouts/…`, `@spec-kitty/doc-toolkit/deck/…` |
 | Brand theme to extend | `@spec-kitty/doc-toolkit/themes/…` |
+| Docs gates (frontmatter, links, built links, …) | `dockitty-*` binaries, `@spec-kitty/doc-toolkit/scripts/…` |
 
 Everything else (`astro.config.mjs`, `src/content.config.ts`, `src/pages/**`,
 `src/theme/**`, your `docs/` tree) is a file you own. Nothing reaches into the

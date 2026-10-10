@@ -57,7 +57,7 @@
  * is intentionally left to `assert-no-broken-links.mjs` (the base-aware,
  * built-output gate) to be the authority on whether it actually 200s.
  */
-import { readdirSync, statSync, existsSync, readFileSync } from 'node:fs';
+import { readdirSync, statSync, existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative, dirname, resolve, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import matter from 'gray-matter';
@@ -309,6 +309,18 @@ export function run(argv) {
 }
 
 // Run the CLI only when invoked directly, so the module can be imported by tests.
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+// CLI guard. Compare against the REAL path of argv[1]: when the package is
+// installed behind a symlink (pnpm's node_modules, or a node_modules/.bin shim),
+// import.meta.url is the resolved path while argv[1] keeps the symlink path, so a
+// plain comparison would never match and the gate would exit 0 having done nothing.
+function invokedDirectly() {
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1] ?? '')).href;
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   run(process.argv);
 }

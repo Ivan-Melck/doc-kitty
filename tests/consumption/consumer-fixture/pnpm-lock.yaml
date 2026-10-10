@@ -982,9 +982,10 @@ packages:
     resolution: {integrity: sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg==}
 
   '@spec-kitty/doc-toolkit@file:toolkit.tgz':
-    resolution: {integrity: sha512-cVnwoU+WmfAtuPADU7GHfzTRf0NHAdz3DmKkmiXBE3t4ofedDBbzlNYKWCa5rJXYxoZF101SdWFf1yuNSxRADg==, tarball: file:toolkit.tgz}
+    resolution: {integrity: sha512-JJ0fqymE01BHFJezUbyzQ2jhAleekzqMuie7IlZBZVsCF9oQNoYGhA8XZ9VNRSWCQ82NdJixOv+E7cup1NFRmA==, tarball: file:toolkit.tgz}
     version: 0.1.1
     engines: {node: '>=22'}
+    hasBin: true
     peerDependencies:
       '@astrojs/starlight': '>=0.32.0 <0.33.0'
       astro: '>=5.0.0'
@@ -2208,6 +2209,9 @@ packages:
   micromark-extension-directive@3.0.2:
     resolution: {integrity: sha512-wjcXHgk+PPdmvR58Le9d7zQYWy+vKEU9Se44p2CrCDPiLr2FMyiT4Fyb5UFKFC66wGB3kPlgD7q3TnoqPS7SZA==}
 
+  micromark-extension-directive@4.0.0:
+    resolution: {integrity: sha512-/C2nqVmXXmiseSSuCdItCMho7ybwwop6RrrRPk0KbOHW21JKoCldC+8rFOaundDoRBUWBnJJcxeA/Kvi34WQXg==}
+
   micromark-extension-gfm-autolink-literal@2.1.0:
     resolution: {integrity: sha512-oOg7knzhicgQ3t4QCjCWgTmfNhvQbDDnJeVu9v81r7NltNCVmhPy1fJRX27pISafdjL+SVc4d3l48Gb6pbRypw==}
 
@@ -2542,6 +2546,9 @@ packages:
 
   remark-directive@3.0.1:
     resolution: {integrity: sha512-gwglrEQEZcZYgVyG1tQuA+h58EZfq5CSULw7J90AFuCTyib1thgHPoqQ+h9iFvU6R+vnZ5oNFQR5QKgGpk741A==}
+
+  remark-directive@4.0.0:
+    resolution: {integrity: sha512-7sxn4RfF1o3izevPV1DheyGDD6X4c9hrGpfdUpm7uC++dqrnJxIZVkk7CoKqcLm0VUMAuOol7Mno3m6g8cfMuA==}
 
   remark-gfm@4.0.1:
     resolution: {integrity: sha512-1quofZ2RQ9EWdeN34S79+KExV1764+wCUGop5CPL1WGdD0ocPpu91lzPGbwWMECpEpd42kJGQwzRfyov9j4yNg==}
@@ -3955,7 +3962,12 @@ snapshots:
       astro-plantuml: 1.0.0(astro@5.18.2(@types/node@24.13.3)(rollup@4.63.1)(typescript@5.9.3)(yaml@2.9.0))(debug@4.4.3)
       gray-matter: 4.0.3
       mermaid: 11.17.1
+      remark-directive: 4.0.0
+      remark-gfm: 4.0.1
+      remark-parse: 11.0.0
+      remark-smartypants: 3.0.3
       reveal.js: 6.0.1
+      unified: 11.0.5
       zod: 3.25.76
     transitivePeerDependencies:
       - debug
@@ -5655,6 +5667,16 @@ snapshots:
       micromark-util-types: 2.0.2
       parse-entities: 4.0.2
 
+  micromark-extension-directive@4.0.0:
+    dependencies:
+      devlop: 1.1.0
+      micromark-factory-space: 2.0.1
+      micromark-factory-whitespace: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+      parse-entities: 4.0.2
+
   micromark-extension-gfm-autolink-literal@2.1.0:
     dependencies:
       micromark-util-character: 2.1.1
@@ -6164,6 +6186,15 @@ snapshots:
       '@types/mdast': 4.0.4
       mdast-util-directive: 3.1.0
       micromark-extension-directive: 3.0.2
+      unified: 11.0.5
+    transitivePeerDependencies:
+      - supports-color
+
+  remark-directive@4.0.0:
+    dependencies:
+      '@types/mdast': 4.0.4
+      mdast-util-directive: 3.1.0
+      micromark-extension-directive: 4.0.0
       unified: 11.0.5
     transitivePeerDependencies:
       - supports-color
