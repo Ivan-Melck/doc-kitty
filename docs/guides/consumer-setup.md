@@ -2,7 +2,7 @@
 title: Consumer setup — build a docsite from the published toolkit
 description: The install → configure → theme → build path for a net-new adopter, using only the published @spec-kitty/doc-toolkit surface.
 doc_status: active
-updated: 2026-10-10
+updated: 2026-10-11
 type: Guide
 kind: How-To
 tags: [adoption, setup, consumer, theming, release]
@@ -16,11 +16,12 @@ related:
 # Consumer setup — build a docsite from the published toolkit
 
 **Audience.** An engineer standing up a net-new documentation site who has
-`@spec-kitty/doc-toolkit` from the registry and wants to wire it exactly as an
-external adopter would — through the package's published entry points only, with
-no reach into the toolkit's own source tree. If you are migrating an *existing*
-Common Docs `docs/` tree instead, start at [Adopting the toolkit](/guides/adopting/)
-and return here for the configuration and theming detail.
+`@spec-kitty/doc-toolkit` from the **GitHub Packages** registry and wants to wire
+it exactly as an external adopter would — through the package's published entry
+points only, with no reach into the toolkit's own source tree. If you are
+migrating an *existing* Common Docs `docs/` tree instead, start at
+[Adopting the toolkit](/guides/adopting/) and return here for the configuration
+and theming detail.
 
 Every step below references either a **published toolkit entry point**
 (`@spec-kitty/doc-toolkit/*`) or a **file you own** in your own project
@@ -38,12 +39,41 @@ reuse contract (SC-005) and is machine-checked by
 ## Prerequisites
 
 - Node ≥ 22 (the package's `engines` floor) and pnpm (`corepack enable`).
+- A GitHub account with a **personal access token** that has the `read:packages`
+  scope. GitHub Packages never serves npm packages anonymously, even public ones,
+  so you need this to install — see [step 1](#1-authenticate-to-github-packages).
 - A project directory with a `docs/` tree that follows the
   [DocKitty](/context/convention/) (section folders, a
   `README.md` section index per folder, required frontmatter). An empty tree is
   fine — the site builds with whatever pages are present.
 
-## 1. Install the toolkit and its peers
+## 1. Authenticate to GitHub Packages
+
+`@spec-kitty/doc-toolkit` is published to the **GitHub Packages** npm registry
+(`npm.pkg.github.com`), not the public npm registry. Point the `@spec-kitty`
+scope at that registry and authenticate it. Add an `.npmrc` at your project root:
+
+```ini
+# .npmrc
+@spec-kitty:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
+
+Then export a token that has `read:packages` before you install — locally and in
+CI:
+
+```sh
+export GITHUB_TOKEN=ghp_your_read_packages_token
+```
+
+Create the token as a
+[classic PAT with `read:packages`](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages),
+or, in GitHub Actions, use the workflow's built-in `GITHUB_TOKEN` with
+`permissions: packages: read`. Keep the literal `${GITHUB_TOKEN}` in `.npmrc` so
+the token is read from the environment and never committed. GitHub's reference is
+[Installing a package](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#installing-a-package).
+
+## 2. Install the toolkit and its peers
 
 The toolkit declares Astro and Starlight as peers, so install them alongside it.
 `@astrojs/sitemap` ships as a regular dependency of the toolkit, so listing it
@@ -55,10 +85,10 @@ pnpm add @spec-kitty/doc-toolkit astro @astrojs/starlight @astrojs/sitemap
 ```
 
 Pin a real release (for example `@spec-kitty/doc-toolkit@0.1.1`, the first
-version published to npm) rather than a floating range so your build is
-reproducible against a known published surface.
+published version) rather than a floating range so your build is reproducible
+against a known published surface.
 
-## 2. `astro.config.mjs` — wire the integrations
+## 3. `astro.config.mjs` — wire the integrations
 
 Compose the toolkit's Astro integrations through the published `/config` entry
 point. `defineDocKittyIntegrations` returns the integration array Starlight and
@@ -68,7 +98,7 @@ the feed/agent-API generators need:
 // astro.config.mjs
 import { defineConfig } from 'astro/config';
 import { defineDocKittyIntegrations } from '@spec-kitty/doc-toolkit/config';
-import { myTheme } from './src/theme/index.ts'; // your consumer theme — see step 4
+import { myTheme } from './src/theme/index.ts'; // your consumer theme — see step 6
 
 const SITE = 'https://you.example.com';
 const BASE = '/docs'; // '' or '/' if you deploy at the domain root
@@ -80,7 +110,7 @@ export default defineConfig({
     title: 'My Docs',
     description: 'What this documentation set is.',
     // MUST equal the site `base` above — the sitemap draft filter strips this
-    // prefix to compare routes. The loader in step 3 must use the same value.
+    // prefix to compare routes. The loader in step 4 must use the same value.
     base: BASE,
     theme: myTheme,
     markua: true,
@@ -96,13 +126,13 @@ Two invariants to hold from the start:
   sub-path) exercises the toolkit's base-prefix seam; a mismatch drifts the
   sitemap filter and feed URLs.
 - **`indexBasename` is routing-authoritative** — the value you pass here must be
-  the identical list you pass to the docs loader in step 3.
+  the identical list you pass to the docs loader in step 4.
 
-## 3. `src/content.config.ts` — register the collections
+## 4. `src/content.config.ts` — register the collections
 
 Register the `docs` collection Starlight expects, plus the two citation-catalog
 data collections, from the published `/schema` entry point. Keep the loader
-`base` equal to the integration `base` from step 2:
+`base` equal to the integration `base` from step 3:
 
 ```ts
 // src/content.config.ts
@@ -134,10 +164,10 @@ export const collections = {
 ```
 
 The loader `base: 'docs'` is the *content root* (where your `docs/` tree lives),
-which is independent of the *URL* `base` (`/docs`) from step 2 — the former tells
+which is independent of the *URL* `base` (`/docs`) from step 3 — the former tells
 the loader where to read files, the latter tells Astro where the site is served.
 
-## 4. `src/pages/*` — add the route endpoints
+## 5. `src/pages/*` — add the route endpoints
 
 The feeds and agent-API are Astro route endpoints you own, each delegating to a
 published `/routes` factory. Add these files under `src/pages/`:
@@ -197,7 +227,7 @@ const { entry } = Astro.props as Props;
 The route yields nothing until you author a deck, so wiring it early costs
 nothing and proves the deck exports resolve.
 
-## 5. A consumer theme — refine `--dk-*`, never `--sl-*`
+## 6. A consumer theme — refine `--dk-*`, never `--sl-*`
 
 A consumer theme is a **declarative data record**: it `extends` a brand (or the
 shipped default) and shallow-overrides a subset of `--dk-*` tokens the toolkit
@@ -269,7 +299,7 @@ your value win in both modes.
 `--sl-*` key. A distinct set of at least five `--dk-*` overrides is what proves
 the consumer layer actually won the cascade in the built output.
 
-## 6. Build
+## 7. Build
 
 ```sh
 astro build
@@ -277,7 +307,7 @@ astro build
 
 `dist/` then contains the rendered site plus `sitemap*.xml`, `rss.xml`,
 `llms.txt`, and the `api/*.json` agent-API. Deploy `dist/` to any static host;
-a based deployment (a sub-path) is covered by the `base` you set in step 2.
+a based deployment (a sub-path) is covered by the `base` you set in step 3.
 
 ### Run the gates on your tree
 
@@ -294,7 +324,7 @@ The other binaries are `dockitty-check-redirect-coverage`,
 `dockitty-validate-catalog`, `dockitty-new-doc`, and `dockitty-scaffold`. The
 same files are also importable as `@spec-kitty/doc-toolkit/scripts/<name>.mjs`.
 
-## 7. Govern your docs — the documentation charter
+## 8. Govern your docs — the documentation charter
 
 Everything above renders and validates a *default* docsite. To change what
 governs your tree — the vocabulary, the sections, the status set, the required
