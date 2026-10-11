@@ -50,27 +50,48 @@ reuse contract (SC-005) and is machine-checked by
 ## 1. Authenticate to GitHub Packages
 
 `@spec-kitty/doc-toolkit` is published to the **GitHub Packages** npm registry
-(`npm.pkg.github.com`), not the public npm registry. Point the `@spec-kitty`
-scope at that registry and authenticate it. Add an `.npmrc` at your project root:
+(`npm.pkg.github.com`), not the public npm registry, and GitHub Packages never
+serves a package anonymously. Authentication has two parts that belong in two
+different files: **map the scope to the registry**, and **supply a
+`read:packages` token**.
+
+Put the scope mapping in a project-root `.npmrc`. It carries no secret, so commit
+it with the repo:
 
 ```ini
-# .npmrc
+# .npmrc  (project root — safe to commit)
 @spec-kitty:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
 ```
 
-Then export a token that has `read:packages` before you install — locally and in
-CI:
+Put the **token** in your *user-level* `~/.npmrc`, not the project file. pnpm
+deliberately does **not** expand `${ENV_VAR}` in a credential read from a project
+`.npmrc` — a committed file could otherwise leak the token to an
+attacker-controlled registry — so a `_authToken=${GITHUB_TOKEN}` line in the
+project `.npmrc` is silently ignored and the install fails with `401`. In the
+user-level file the expansion works:
+
+```ini
+# ~/.npmrc  (user-level — pnpm expands env vars here)
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
 
 ```sh
 export GITHUB_TOKEN=ghp_your_read_packages_token
 ```
 
+Equivalently, store the token directly with
+`pnpm config set "//npm.pkg.github.com/:_authToken" "<token>"` (it writes to
+`~/.npmrc`). See [pnpm's `.npmrc` reference](https://pnpm.io/npmrc). (Plain `npm`
+*does* expand env vars in a project `.npmrc`, so the single-file form still works
+there — but this toolkit installs with pnpm.)
+
 Create the token as a
-[classic PAT with `read:packages`](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages),
-or, in GitHub Actions, use the workflow's built-in `GITHUB_TOKEN` with
-`permissions: packages: read`. Keep the literal `${GITHUB_TOKEN}` in `.npmrc` so
-the token is read from the environment and never committed. GitHub's reference is
+[classic PAT with `read:packages`](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#authenticating-to-github-packages).
+In GitHub Actions, use `actions/setup-node` with
+`registry-url: https://npm.pkg.github.com` and `scope: '@spec-kitty'`, pass the
+workflow's built-in token as `NODE_AUTH_TOKEN`, and grant
+`permissions: packages: read` — setup-node writes the credential to a
+runner-level npmrc, so the env expansion works there too. GitHub's reference is
 [Installing a package](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry#installing-a-package).
 
 ## 2. Install the toolkit and its peers

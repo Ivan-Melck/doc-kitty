@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The install docs now authenticate correctly under pnpm** — the README and the
+  consumer-setup guide told consumers to put
+  `//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}` in a project-root `.npmrc`,
+  but pnpm does not expand `${ENV_VAR}` in a credential read from a project file,
+  so the token was silently ignored and `pnpm add @spec-kitty/doc-toolkit` failed
+  with `401 Unauthorized`. The guidance now keeps only the scope→registry mapping
+  in the project `.npmrc` and puts the token in the user-level `~/.npmrc` (or
+  `pnpm config set`), where pnpm expands it.
+
 ## [0.1.1] — 2026-10-10
 
 **The first published version**, as `@spec-kitty/doc-toolkit` on the

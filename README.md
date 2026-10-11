@@ -42,18 +42,24 @@ first-class — it drives navigation, the RSS feed, and the agent-API. See
 ## Install the published toolkit
 
 `@spec-kitty/doc-toolkit` is published to the **GitHub Packages** npm registry
-(`npm.pkg.github.com`), not the public npm registry. GitHub Packages does not
-serve npm packages anonymously — even public ones — so installing it needs a
-GitHub token with the `read:packages` scope. Point the `@spec-kitty` scope at the
-registry in an `.npmrc` at your project root:
+(`npm.pkg.github.com`), not the public npm registry. GitHub Packages never serves
+a package anonymously, so installing it needs a GitHub token with the
+`read:packages` scope. Map the `@spec-kitty` scope to the registry in a
+project-root `.npmrc` (no secret — commit it):
 
 ```ini
-# .npmrc
+# .npmrc  (project root)
 @spec-kitty:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
 ```
 
-then export a `read:packages` token and install:
+Put the token in your **user-level** `~/.npmrc`, not the project file — pnpm does
+not expand `${GITHUB_TOKEN}` in a project `.npmrc`, so a token line there is
+ignored and the install fails with `401`:
+
+```ini
+# ~/.npmrc
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
 
 ```sh
 export GITHUB_TOKEN=ghp_your_read_packages_token
