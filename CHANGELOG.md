@@ -8,12 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.1.1] — 2026-10-10
 
-**The first version published to npm**, as `@spec-kitty/doc-toolkit`. `0.1.0` was
-tagged under the previous name (`@commondocs-kitty/toolkit`) and was never
-published, so `0.1.1` is the first installable release. The rename below is
-breaking only for anyone who built from a source checkout; no npm consumer exists
-under either name. (The heading date is the release-prep date; the
-[releasing runbook](docs/ops/releasing.md) has you update it to the tag date.)
+**The first published version**, as `@spec-kitty/doc-toolkit` on the
+[GitHub Packages](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry)
+npm registry (`npm.pkg.github.com`). `0.1.0` was tagged under the previous name
+(`@commondocs-kitty/toolkit`) and was never published to any registry, so `0.1.1`
+is the first installable release. The rename below is breaking only for anyone who
+built from a source checkout; no registry consumer exists under either name.
+Installing from GitHub Packages needs a GitHub token with `read:packages` — see
+[consumer setup](docs/guides/consumer-setup.md). (The heading date is the
+release-prep date; the [releasing runbook](docs/ops/releasing.md) has you update it
+to the tag date.)
 
 ### 💥 Breaking
 
@@ -23,7 +27,7 @@ under either name. (The heading date is the release-prep date; the
   Variation" to **DocKitty**. Adopters must update their dependency and every
   `@commondocs-kitty/toolkit/*` import to `@spec-kitty/doc-toolkit/*` (the
   subpath exports are otherwise unchanged). The package has not been published to
-  npm, so there are no released consumers to migrate. Publishing under the
+  any registry, so there are no released consumers to migrate. Publishing under the
   `@spec-kitty` scope refines the zero-Spec-Kitty-coupling invariant (NFR-001):
   the toolkit still carries no Spec Kitty *runtime* coupling, but its own
   self-reference is no longer treated as coupling — see
@@ -34,14 +38,15 @@ under either name. (The heading date is the release-prep date; the
 
 ### Added
 
-- **npm release workflow** — `.github/workflows/release.yml` publishes the
-  toolkit to npm when a `v<version>` tag is pushed. A read-only `verify` job
-  fails closed unless the tag equals `src/package.json` `version`, the tagged
+- **GitHub Packages release workflow** — `.github/workflows/release.yml`
+  publishes the toolkit to the GitHub Packages npm registry
+  (`npm.pkg.github.com`) when a `v<version>` tag is pushed. A read-only `verify`
+  job fails closed unless the tag equals `src/package.json` `version`, the tagged
   commit is on `main`, and the CHANGELOG has a section for it. It re-runs
   typecheck, lint, unit tests, and the clean-room consumption test with its
-  self-test, then packs the tarball. A separate `publish` job, the only one
-  with `id-token: write` and `NPM_TOKEN`, installs nothing and runs
-  `npm publish --provenance --access public` on that tarball. Prerelease
+  self-test, then packs the tarball. A separate `publish` job — the only one with
+  `packages: write` — installs nothing and publishes that tarball with the run's
+  built-in `GITHUB_TOKEN`, so no external publish secret is needed. Prerelease
   versions publish under the `next` dist-tag. A manual dispatch is a dry-run
   rehearsal and never publishes, even on a tag ref. The runbook is
   [`docs/ops/releasing.md`](docs/ops/releasing.md).
@@ -76,9 +81,10 @@ under either name. (The heading date is the release-prep date; the
 ### Changed
 
 - **Package metadata for publishing** — `src/package.json` gains `repository`
-  (with `directory: src`, which npm provenance checks against the building
-  repository), `homepage`, `bugs`, and `keywords`, and `publishConfig` now sets
-  `provenance: true` next to `access: public`.
+  (with `directory: src`, which GitHub Packages uses to link the package to this
+  repository), `homepage`, `bugs`, and `keywords`, and `publishConfig` now pins
+  the GitHub Packages registry (`registry: https://npm.pkg.github.com`) next to
+  `access: public`, so a stray `npm publish` cannot reach the public npm registry.
 - **The consumption harness reads the expected version from `src/package.json`**
   instead of hardcoding `0.1.0`, and accepts both the npm ≤ 11 (array) and npm 12
   (object) shapes of `npm pack --json` output.
@@ -96,10 +102,13 @@ under either name. (The heading date is the release-prep date; the
   `ERR_PNPM_TARBALL_INTEGRITY`. Before each frozen install, the harness now
   rewrites that one entry to the sha512 of the tarball it just packed and
   restores the file afterwards. Every registry integrity stays frozen.
-- **Consumer setup guide** — the prerequisite is now Node ≥ 22, matching the
-  package's `engines` (it said Node ≥ 20), the pinned-release example names
-  `0.1.1`, and the install step no longer calls `@astrojs/sitemap` a peer (it is a
-  regular dependency of the toolkit).
+- **Consumer setup guide** — a new first step covers authenticating to GitHub
+  Packages (the `.npmrc` scope mapping and a `read:packages` token), since the
+  registry serves no npm package anonymously. The prerequisite is now Node ≥ 22,
+  matching the package's `engines` (it said Node ≥ 20), the pinned-release example
+  names `0.1.1`, and the install step no longer calls `@astrojs/sitemap` a peer (it
+  is a regular dependency of the toolkit). The root `README` gains a matching
+  install-from-GitHub-Packages section.
 
 ### Fixed
 
@@ -109,6 +118,15 @@ under either name. (The heading date is the release-prep date; the
   shim, argv keeps the symlink path, so
   `node node_modules/@spec-kitty/doc-toolkit/scripts/validate-frontmatter.mjs`
   did nothing and reported success. The guard now compares real paths.
+- **The on-demand "Update a11y baselines" workflow can regenerate baselines for
+  branches whose example includes the PlantUML demonstrator** (`#106`) — its
+  `regenerate` job runs inside the pinned Playwright container and builds the
+  example in BUILD diagram-render mode, but declared no PlantUML render server, so
+  the build-mode PlantUML assertion aborted the job before it reached the
+  detect/commit/PR steps. The job now carries `ci.yml`'s `build-example` render
+  setup (a `plantuml/plantuml-server:jetty` service reached by its Docker-network
+  name `http://plantuml:8080/svg/`, deterministic BUILD render env, a
+  wait-for-ready step, and `@beoe` Mermaid render-cache parity).
 
 ## [0.1.0] — 2026-09-09
 
