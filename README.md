@@ -39,6 +39,32 @@ Docs** convention, with two Kitty twists: **`README.md` is the section index**
 first-class — it drives navigation, the RSS feed, and the agent-API. See
 [`docs/context/convention.md`](./docs/context/convention.md) for the full spec.
 
+## Install the published toolkit
+
+`@spec-kitty/doc-toolkit` is published to the **GitHub Packages** npm registry
+(`npm.pkg.github.com`), not the public npm registry. GitHub Packages does not
+serve npm packages anonymously — even public ones — so installing it needs a
+GitHub token with the `read:packages` scope. Point the `@spec-kitty` scope at the
+registry in an `.npmrc` at your project root:
+
+```ini
+# .npmrc
+@spec-kitty:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
+
+then export a `read:packages` token and install:
+
+```sh
+export GITHUB_TOKEN=ghp_your_read_packages_token
+pnpm add @spec-kitty/doc-toolkit astro @astrojs/starlight @astrojs/sitemap
+```
+
+The full install → configure → theme → build path is in
+[Consumer setup](./docs/guides/consumer-setup.md); GitHub's own reference is
+[Working with the npm registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-npm-registry).
+Maintainers publishing a release follow [Releasing the toolkit](./docs/ops/releasing.md).
+
 ## Quickstart
 
 ```sh
