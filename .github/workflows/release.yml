@@ -155,4 +155,6 @@ jobs:
           # The run's built-in token; `packages: write` above scopes it to publish.
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DIST_TAG: ${{ needs.verify.outputs.dist_tag }}
-        run: npm publish release/*.tgz --access public --tag "$DIST_TAG"
+        # The leading `./` forces npm to read a local tarball; `release/*.tgz`
+        # without it is parsed as a GitHub `owner/repo` shorthand and fails.
+        run: npm publish ./release/*.tgz --access public --tag "$DIST_TAG"
