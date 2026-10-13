@@ -348,6 +348,21 @@ changed since generation, or a scenario with no rendered heading fails the build
 `llms.txt` adds a `Scenario index:` line only when at least one such page exists,
 so a site without Gherkin pages is unaffected.
 
+## The RSS feed
+
+Whether the pages reach `rss.xml` is the section's choice: the example site's
+`behaviour` section lists `rss` in `feeds` (`example/docs/_meta/sections.yaml`), and
+a site drops it to keep specs out. The feed ranks by `updated`, newest first, with
+undated items last in slug order (`rankForFeed` in `metadata.ts`), and omits
+`<pubDate>` when there is no date. A generated page has no `updated` unless its
+feature carries `@dk:updated=<date>`, so by default:
+
+- every feature page and every hub is an item, each without a `<pubDate>`;
+- a new `.feature` file is a new undated item;
+- a new scenario in an existing feature changes nothing a subscriber sees,
+  unless the author also sets or bumps `@dk:updated`;
+- a draft feature is not in the feed.
+
 ## Limits
 
 - **New files need a restart.** Only the `.feature` files loaded at startup are

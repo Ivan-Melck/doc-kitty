@@ -1963,6 +1963,14 @@ async function main() {
   if (scenariosText.includes(SCENARIO_DRAFT_FEATURE_ID)) {
     fail(`scenario index: the draft feature ${SCENARIO_DRAFT_FEATURE_ID} leaked past draft gating`);
   }
+  // The example lists its feature pages in the RSS feed (sections.yaml `feeds`
+  // includes `rss`); the draft feature stays out of it in either build mode.
+  if (!rss.includes(`/${SCENARIO_KNOWN_FEATURE_ID}/`)) {
+    fail(`rss.xml: the feature page ${SCENARIO_KNOWN_FEATURE_ID} is missing (the behaviour section feeds rss)`);
+  }
+  if (rss.includes(SCENARIO_DRAFT_FEATURE_ID)) {
+    fail(`rss.xml: the draft feature ${SCENARIO_DRAFT_FEATURE_ID} leaked past draft gating`);
+  }
   const knownFeature = scenarioIndex.features.find((f) => f.id === SCENARIO_KNOWN_FEATURE_ID);
   if (!knownFeature) fail(`scenario index: ${SCENARIO_KNOWN_FEATURE_ID} is missing`);
   if (knownFeature.url !== `https://spec-kitty.github.io/doc-kitty/${SCENARIO_KNOWN_FEATURE_ID}/`) {
