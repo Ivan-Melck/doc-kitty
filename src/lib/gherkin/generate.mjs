@@ -58,6 +58,7 @@ import {
   compareCodeUnit,
   DEFAULT_INDEX_BASENAME,
   humanizeSection,
+  humaniseDirectoryName,
   isIndexPath,
   normalizeIndexBasenames,
   slug,
@@ -303,7 +304,7 @@ export function planFeaturePages(model, opts) {
     for (let depth = dirs.length; depth > 0; depth -= 1) {
       const dir = dirs.slice(0, depth).join('/');
       if (dirTitles.has(dir)) continue;
-      dirTitles.set(dir, humanizeSection(segments[depth - 1]));
+      dirTitles.set(dir, humaniseDirectoryName(segments[depth - 1]));
       dirSource.set(dir, sourceLabel);
       const up = dirs.slice(0, depth - 1).join('/');
       if (!children.has(up)) children.set(up, []);

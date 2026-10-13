@@ -33,7 +33,7 @@
  * byte-identical (NFR-006).
  */
 import type { StarlightRouteData } from '@astrojs/starlight/route-data';
-import { compareCodeUnit } from './vocabulary-core.mjs';
+import { compareCodeUnit, humaniseDirectoryName } from './vocabulary-core.mjs';
 
 /** One resolved Starlight sidebar entry (a link or a group). */
 export type SidebarEntry = StarlightRouteData['sidebar'][number];
@@ -150,10 +150,7 @@ function commonDir(dirs: readonly string[]): string | undefined {
 }
 
 /** `book-one` → `Book one`: a readable form of a directory name (FR-023). */
-export function humaniseDirectoryName(name: string): string {
-  const words = name.split(/[-_\s]+/).filter(Boolean).join(' ');
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
+export { humaniseDirectoryName };
 
 /** Normalise an Astro `base` to `''` or `/prefix` (no trailing slash). */
 function normaliseBase(base: string | undefined): string {
