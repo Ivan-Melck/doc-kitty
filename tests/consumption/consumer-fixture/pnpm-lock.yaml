@@ -133,6 +133,12 @@ packages:
     resolution: {integrity: sha512-kzyuwOAQnXJNLS9PSyrk0CWk35nWJW/zl/6KvnTBMFK65gm7U1/Z5BqjxeapjZCIhQcM/DsrEmcbRwDyXyXK4A==}
     engines: {node: '>=14'}
 
+  '@cucumber/gherkin@42.0.1':
+    resolution: {integrity: sha512-Kqg0ULhWqbXp/a1c04ND4sS4KTlIL831tQ0NhZLXWdEhT6LiNsZ5LFRzy/lBy7QQpcKhroKp/i3C2WdEnRBKNg==}
+
+  '@cucumber/messages@34.2.1':
+    resolution: {integrity: sha512-aj2iCAG9ZOpMVcMxcgShifv5fbR96b7SMgdWcPXXh2QbFp7OEcAnQ5MC5YfWUDSDasmw7FU5NJEsOrXdTQOU1A==}
+
   '@emmetio/abbreviation@2.3.3':
     resolution: {integrity: sha512-mgv58UrU3rh4YgbE/TzgLQwJ3pFsHHhCLqY20aJq+9comytTXUDNGG/SMtSeMJdkpxgXSXunBGLD8Boka3JyVA==}
 
@@ -982,7 +988,7 @@ packages:
     resolution: {integrity: sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg==}
 
   '@spec-kitty/doc-toolkit@file:toolkit.tgz':
-    resolution: {integrity: sha512-KvQgQtyZqyYS5HfETezRxsogjthiQD/7G3h4K6BR4hTk6NoyT0Lm8zjAm3+CSwWlQIegGx2FbInKwQsnTjW8HQ==, tarball: file:toolkit.tgz}
+    resolution: {integrity: sha512-0zh6LMtzHTsq6X+sj1NHCXumZ8XTsdhR+ANCUZ7HqGgqU2z4siytyLua37663GT7/fLQeGwjrCmtCOK3IXGI3g==, tarball: file:toolkit.tgz}
     version: 0.2.0
     engines: {node: '>=22'}
     hasBin: true
@@ -3357,6 +3363,12 @@ snapshots:
 
   '@ctrl/tinycolor@4.2.0': {}
 
+  '@cucumber/gherkin@42.0.1':
+    dependencies:
+      '@cucumber/messages': 34.2.1
+
+  '@cucumber/messages@34.2.1': {}
+
   '@emmetio/abbreviation@2.3.3':
     dependencies:
       '@emmetio/scanner': 1.0.4
@@ -3958,6 +3970,8 @@ snapshots:
       '@astrojs/sitemap': 3.7.4
       '@astrojs/starlight': 0.32.6(astro@5.18.2(@types/node@24.13.3)(rollup@4.63.1)(typescript@5.9.3)(yaml@2.9.0))
       '@beoe/rehype-mermaid': 0.4.2
+      '@cucumber/gherkin': 42.0.1
+      '@cucumber/messages': 34.2.1
       astro: 5.18.2(@types/node@24.13.3)(rollup@4.63.1)(typescript@5.9.3)(yaml@2.9.0)
       astro-plantuml: 1.0.0(astro@5.18.2(@types/node@24.13.3)(rollup@4.63.1)(typescript@5.9.3)(yaml@2.9.0))(debug@4.4.3)
       gray-matter: 4.0.3
