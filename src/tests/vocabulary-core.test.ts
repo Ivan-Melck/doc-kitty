@@ -403,6 +403,7 @@ describe('humanizeSection (folder name → title; shared by the sidebar and the 
     ['shipping-ops', 'Shipping Ops'],
     ['a_b-c d', 'A B C D'],
     ['--x--', 'X'],
+    ['Ship Ping', 'Ship Ping'],
   ])('%j → %j', (input, title) => {
     expect(humanizeSection(input)).toBe(title);
   });
