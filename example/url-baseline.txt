@@ -39,3 +39,17 @@
 # (WP02's fixture above proves the gate mechanism independently of any rename).
 /plans/features/mission-alpha/
 /plans/features/mission-beta/
+
+# gherkin-feature-pages WP08 (ADR-0046): the generated behaviour section — the
+# section hub, the two directory hubs and the three ACTIVE feature pages, codegen'd
+# from example/features/**. These URLs are now published (sitemap, llms.txt, agent
+# API), so a later rename of a .feature file or of the section must redirect them.
+# The @wip feature (behaviour/shipping/track-consignment/) is deliberately NOT
+# baselined: it is a draft, unpublished like adr/template, so it carries no URL
+# contract yet.
+/behaviour/
+/behaviour/hr/
+/behaviour/hr/request-leave/
+/behaviour/shipping/
+/behaviour/shipping/book-consignment/
+/behaviour/shipping/declare-customs/

@@ -365,8 +365,16 @@ function normalizeBasePrefix(base: string): string {
  *      Resolved from `<docsDir>/_meta/sections.yaml`; a section that OMITS
  *      `feeds` feeds ALL FOUR surfaces (absent = all, {@link feedsSurface}), and
  *      an ABSENT registry means no feeds filtering at all — byte-compatible with
- *      the pre-feeds sitemap (the example corpus declares no `feeds`, so this gate
- *      drops nothing there).
+ *      the pre-feeds sitemap (a registry that declares no `feeds` drops nothing).
+ *
+ * The draft routes are read LAZILY, on the filter's first call (sitemap runs it
+ * in `astro:build:done`), NOT when the integrations array is built: the opt-in
+ * `doc-kitty:gherkin` integration (ADR-0046) writes `kind: Specification` pages
+ * in `astro:config:setup`, which runs AFTER `defineDocKittyIntegrations`
+ * returns. An eager read would gate the sitemap on the PRE-generation tree, so a
+ * feature that had just gained `@wip` would leak its draft URL into the sitemap
+ * (and one that just lost it would be wrongly dropped) for that build, while the
+ * collection-backed surfaces (llms.txt, RSS, agent API) saw the fresh status.
  *
  * Exported so the composed draft+feeds gate is unit-testable without spinning up
  * the whole Astro integrations array.
@@ -376,7 +384,7 @@ export function sitemapDraftFilter(
   base: string,
   indexBasename?: IndexBasenameOption,
 ): (page: string) => boolean {
-  const routes = siteDraftRoutes(docsDir, indexBasename);
+  let routes: Set<string> | undefined;
   const basePrefix = normalizeBasePrefix(base);
   // Load the registry from the SAME docs root the sidebar synthesis uses. Absent
   // registry → `feeds` undefined → `feedsSurface` is always true (no filtering).
@@ -395,6 +403,8 @@ export function sitemapDraftFilter(
       normalized = normalized.slice(basePrefix.length) || '/';
     }
     // Anchored equality: the route must BE a draft route, not merely end with one.
+    // Read once, at the first call (after every config:setup generator has run).
+    routes ??= siteDraftRoutes(docsDir, indexBasename);
     if (routes.has(normalized)) return false;
     // `feeds` gate: derive the section from the base-free route (first path
     // segment; the root '/' → section '') and drop it if it does not feed sitemap.

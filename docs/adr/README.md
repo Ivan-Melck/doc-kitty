@@ -56,6 +56,6 @@ kind: Hub
 | [0043](./0043-toolkit-package-scope-and-self-reference.md) | ADR-0043: DocKitty ships under the @spec-kitty scope; NFR-001 forbids runtime coupling, not self-reference | Accepted | 2026-09-28 |
 | [0044](./0044-header-carrier.md) | ADR-0044: Header is the fifth carrier; a theme replaces the site header through dk:site-header | Accepted | 2026-10-13 |
 | [0045](./0045-frame-width-token.md) | ADR-0045: The page frame is full width by default; --dk-width-frame caps it | Accepted | 2026-10-13 |
-| [0046](./0046-gherkin-feature-pages.md) | ADR-0046: Render Gherkin .feature files as Specification pages by codegen into the docs collection | Proposed | 2026-10-13 |
+| [0046](./0046-gherkin-feature-pages.md) | ADR-0046: Render Gherkin .feature files as Specification pages by codegen into the docs collection | Accepted | 2026-10-13 |
 
 New ADRs copy [`template.md`](./template.md).

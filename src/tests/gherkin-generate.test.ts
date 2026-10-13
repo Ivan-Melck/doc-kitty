@@ -478,6 +478,21 @@ describe('nested directories: one hub per directory, direct children only (contr
     ]);
   });
 
+  it('a draft feature is generated but never listed in its hub (INV-1 draft gating)', () => {
+    const site = makeSite({
+      'features/a/alpha.feature': feature('Alpha'),
+      'features/a/wip.feature': feature('Work in progress', { tags: '@wip' }),
+      'features/a/status.feature': feature('Status draft', { tags: '@dk:status=draft' }),
+    });
+    gen(site);
+    const tree = readTree(site.outDir);
+    expect(fm(tree['a/wip.md'] as string).doc_status).toBe('draft');
+    expect(fm(tree['a/status.md'] as string).doc_status).toBe('draft');
+    expect(hubLinks(tree['a/README.md'] as string)).toEqual(['./alpha/']);
+    expect(tree['a/README.md']).not.toContain('Work in progress');
+    expect(tree['a/README.md']).not.toContain('Status draft');
+  });
+
   it('hub generated.at changes when a child is added, not when a child only changes content', () => {
     const site = makeSite({ 'features/a/b/c.feature': feature('Charlie') });
     gen(site);

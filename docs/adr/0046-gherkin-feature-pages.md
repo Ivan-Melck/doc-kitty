@@ -1,7 +1,7 @@
 ---
 title: "ADR-0046: Render Gherkin .feature files as Specification pages by codegen into the docs collection"
 description: An opt-in gherkin preset parses .feature sources once and generates one Specification page per feature into the docs collection, reusing the ADR-0026 seam.
-doc_status: draft
+doc_status: active
 updated: 2026-10-13
 type: ADR
 kind: ADR
@@ -21,7 +21,9 @@ related:
 
 ## Status
 
-Proposed. It becomes Accepted once the preset is switched on in the example site.
+Accepted. The preset is switched on in the example site (`gherkin: { sources: ['features'],
+section: 'behaviour' }` in `example/astro.config.mjs`), which builds and gates the
+generated behaviour section end to end.
 
 ## Context
 

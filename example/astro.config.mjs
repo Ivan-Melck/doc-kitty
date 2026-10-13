@@ -100,5 +100,12 @@ export default defineConfig({
     // README-based sections. WP02 owns this line; WP04 supplies the `index.md`
     // content only (data-model.md E-08 ownership split).
     indexBasename: ['README', 'index'],
+    // Opt-in Gherkin feature pages (ADR-0046, gherkin-feature-pages WP08 on-switch):
+    // every `*.feature` under `example/features/` is codegen'd in
+    // `astro:config:setup` into one `kind: Specification` page (plus directory
+    // hubs) under `docs/behaviour/`. The generated pages are committed, and
+    // `pnpm validate:features` drift-checks them in CI with these SAME values as
+    // CLI flags — src/tests/gherkin-example.test.ts keeps the two equal.
+    gherkin: { sources: ['features'], section: 'behaviour' },
   }),
 });

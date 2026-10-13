@@ -219,12 +219,18 @@ export function planFeaturePages(model, opts) {
     const dirs = slugged.slice(0, -1);
     const parent = dirs.join('/');
     if (!children.has(parent)) children.set(parent, []);
-    children.get(parent)?.push({
-      out,
-      title: fields.title,
-      description: fields.description,
-      href: `./${slugged[slugged.length - 1]}/`,
-    });
+    // A DRAFT page (`@wip`, `@dk:status=draft`) is still generated, but never
+    // listed in its hub: the Hub layout's own child listing drops drafts
+    // (`hub-children.mjs`, INV-1), and the hub's raw Markdown is served to agents
+    // (`/api/pages/<hub>.json`), so a listed draft would leak past draft gating.
+    if (fields.doc_status !== 'draft') {
+      children.get(parent)?.push({
+        out,
+        title: fields.title,
+        description: fields.description,
+        href: `./${slugged[slugged.length - 1]}/`,
+      });
+    }
     for (let depth = dirs.length; depth > 0; depth -= 1) {
       const dir = dirs.slice(0, depth).join('/');
       if (dirTitles.has(dir)) continue;
