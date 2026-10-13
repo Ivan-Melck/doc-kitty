@@ -244,7 +244,7 @@ describe('generate-feature-pages CLI — --check drift gate', () => {
 });
 
 describe('generate-feature-pages CLI — option validation parity with the integration (review #6)', () => {
-  it.each(['../../escaped', '..', 'a/b', '.hidden', 'a\\b'])('--section %s is rejected (exit 1) and nothing is written', (section) => {
+  it.each(['../../escaped', '..', 'a/b', '.hidden', 'a\\b', ' '])('--section %s is rejected (exit 1) and nothing is written', (section) => {
     const site = makeSite();
     // A regression would write OUTSIDE the temp site (`<tmp>/escaped`): clean that up too.
     if (section.startsWith('../../')) sites.push(path.resolve(site, 'docs', section));
@@ -254,6 +254,21 @@ describe('generate-feature-pages CLI — option validation parity with the integ
     expect(existsSync(path.resolve(site, 'docs', section))).toBe(section === '..');
     expect(existsSync(path.resolve(site, 'docs', section, 'README.md'))).toBe(false);
   });
+
+  it.each(['../guides/a', 'sub/index', '.hidden', 'a\\b'])(
+    '--index-basename %s is rejected (exit 1) and no page outside the section is replaced',
+    (basename) => {
+      const site = makeSite();
+      mkdirSync(path.join(site, 'docs', 'guides'), { recursive: true });
+      const authored = path.join(site, 'docs', 'guides', 'a.md');
+      writeFileSync(authored, '# Hand-written\n');
+      const res = run(site, '--index-basename', basename);
+      expect(res.status).toBe(1);
+      expect(res.stderr).toMatch(/\[dk-gherkin\] --index-basename must be a plain file name/);
+      expect(readFileSync(authored, 'utf8')).toBe('# Hand-written\n');
+      expect(existsSync(path.join(site, 'docs', 'behaviour'))).toBe(false);
+    },
+  );
 
   it.each(['glossary', '_meta'])('--section %s is reserved (exit 1)', (section) => {
     const site = makeSite();

@@ -939,6 +939,19 @@ describe('symlinks in the output directory are never written through (review #8)
   });
 });
 
+describe('a symlinked section root is never written or pruned through', () => {
+  it('is fatal before any write, and the target keeps its stamped page', () => {
+    const site = makeSite({ 'features/shipping/book.feature': feature('Book a slot') });
+    const elsewhere = path.join(site.root, 'elsewhere');
+    mkdirSync(elsewhere);
+    const stamped = '---\ntitle: "x"\ngenerated:\n  by: "doc-kitty/gherkin"\n  at: "sha256:000000000000"\n---\n';
+    writeFileSync(path.join(elsewhere, 'old.md'), stamped);
+    symlinkSync(elsewhere, site.outDir);
+    expect(() => gen(site)).toThrow(/\[dk-gherkin\].*symlink/);
+    expect(readdirSync(elsewhere)).toEqual(['old.md']);
+  });
+});
+
 describe('an unnamed Feature: H1, title and hub entry agree (review #5)', () => {
   it('uses the keyword for the title, the H1 and the hub link, and warns once', () => {
     const site = makeSite({

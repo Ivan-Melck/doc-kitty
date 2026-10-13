@@ -79,7 +79,7 @@ import {
 } from './glossary/definitions-payload.js';
 import { GHERKIN_LOG_PREFIX, loadFeatures } from './gherkin/load.mjs';
 import { generateFeaturePages } from './gherkin/generate.mjs';
-import { validateGherkinOptions } from './gherkin/options.mjs';
+import { validateGherkinOptions, validateIndexBasenames } from './gherkin/options.mjs';
 
 /**
  * Internal cross-boundary signal (integration → standalone routes), NOT a public
@@ -1650,6 +1650,7 @@ export function defineDocKittyIntegrations(options: DocKittyOptions) {
   // `undefined` when the option is absent — every gherkin branch below then
   // contributes nothing (byte-identical array, sidebar call and corpus).
   const gherkinOpts = gherkin === undefined ? undefined : resolveGherkinOptions(gherkin);
+  if (gherkinOpts) validateIndexBasenames(indexBasename, 'indexBasename');
 
   // Publish the ONE authoritative docs root (F3/F5). This is the exact value the
   // sitemap draft filter resolves internally (`path.resolve(process.cwd(),
