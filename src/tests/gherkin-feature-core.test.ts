@@ -19,6 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AstBuilder, GherkinClassicTokenMatcher, Parser } from '@cucumber/gherkin';
 import { IdGenerator } from '@cucumber/messages';
+import matter from 'gray-matter';
 import {
   GENERATED_BY,
   DEFAULT_GUIDANCE_TEXT,
@@ -562,5 +563,76 @@ describe('gherkin metadata core is pure (import-scan)', () => {
   it('text.mjs imports nothing', () => {
     const src = readFileSync(path.join(SRC_ROOT, 'lib/gherkin/text.mjs'), 'utf8');
     expect(importSpecifiers(src)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes (post-WP09)
+// ---------------------------------------------------------------------------
+
+describe('@dk:status values are validated and doc_status always serialises to a YAML string (review #1)', () => {
+  // Each of these, emitted bare, is invalid YAML (`!x` tag, `[x]` flow seq,
+  // `foo:` mapping, `*a` alias) or a NON-string scalar (`null`, `true`, `1e3`).
+  // The next run could not read `generated.by` back, would classify the page as
+  // authored and refuse to write — a permanent lockout.
+  const BAD = ['!x', '[x]', 'foo:', '*a', 'null', 'true', '1e3', 'Active', '-x', 'a b'];
+
+  it.each(BAD)('@dk:status=%s is ignored with a warning (falls back to the shorthand/default)', (value) => {
+    const plain = parseMetadataTags(tagsOf(`@dk:status=${value}`), { file: FILE });
+    expect(plain.meta.status).toBe('active');
+    expect(plain.warnings).toHaveLength(1);
+    expect(plain.warnings[0]).toMatch(/^\[dk-gherkin\] features\/x\.feature:1:1 invalid @dk:status=/);
+    expect(plain.warnings[0]).toContain('ignored');
+    expect(parseMetadataTags(tagsOf(`@dk:status=${value}`, '@wip'), {}).meta.status).toBe('draft');
+  });
+
+  it.each(['review', 'charter-custom', 'in-review-2', 'durable'])('@dk:status=%s (well-formed) passes through', (value) => {
+    const { meta, warnings } = parseMetadataTags(tagsOf(`@dk:status=${value}`), {});
+    expect(meta.status).toBe(value);
+    expect(warnings).toEqual([]);
+  });
+
+  it.each(BAD)('serializeFrontmatter quotes a non-slug doc_status (%s) so it reads back as that string', (value) => {
+    const { fields } = render([]);
+    const block = serializeFrontmatter({ ...fields, doc_status: value });
+    const data = matter(`${block}\n`).data as Record<string, unknown>;
+    expect(data.doc_status).toBe(value);
+    expect((data.generated as { by: string }).by).toBe(GENERATED_BY);
+  });
+
+  it('a slug-shaped doc_status stays bare (goldens unchanged)', () => {
+    const { fields } = render([]);
+    expect(serializeFrontmatter({ ...fields, doc_status: 'charter-custom' })).toContain('\ndoc_status: charter-custom\n');
+  });
+});
+
+describe('an unnamed Feature has ONE title fallback (review #5)', () => {
+  it('title and description fall back to the trimmed keyword, with a warning naming file:line', () => {
+    const { fields, warnings } = buildFrontmatter({
+      featureName: '   ',
+      featureKeyword: 'Functionaliteit ',
+      description: undefined,
+      tags: [],
+      file: FILE,
+      hash: HASH,
+      location: { line: 3, column: 1 },
+    });
+    expect(fields.title).toBe('Functionaliteit');
+    expect(fields.description).toBe('Behaviour specification for Functionaliteit.');
+    expect(warnings).toContain('[dk-gherkin] features/x.feature:3 Feature has no name; using "Functionaliteit"');
+  });
+
+  it('defaults to "Feature" when no keyword is supplied', () => {
+    const { fields } = buildFrontmatter({ featureName: '', description: 'Some text here.', tags: [], hash: HASH });
+    expect(fields.title).toBe('Feature');
+  });
+});
+
+describe('feature-core exports only what other modules use (review #11)', () => {
+  it('METADATA_KEYS / firstSentence / DESCRIPTION_MAX are module-private', async () => {
+    const mod = await import('../lib/gherkin/feature-core.mjs');
+    expect(Object.keys(mod)).not.toContain('METADATA_KEYS');
+    expect(Object.keys(mod)).not.toContain('firstSentence');
+    expect(Object.keys(mod)).not.toContain('DESCRIPTION_MAX');
   });
 });

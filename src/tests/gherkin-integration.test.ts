@@ -413,3 +413,32 @@ sections:
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Review #6 — ONE option validator for the integration AND the bare-Node CLI
+// ---------------------------------------------------------------------------
+
+describe('gherkin option validation is single-sourced (review #6)', () => {
+  it('config.ts validates through the shared options.mjs (no second copy of the rules)', () => {
+    const src = readFileSync(new URL('../lib/config.ts', import.meta.url), 'utf8');
+    expect(src).toMatch(/from '\.\/gherkin\/options\.mjs'/);
+    expect(src).not.toMatch(/must be a single folder name/);
+  });
+
+  it('the shared reserved-section default equals _meta + the build-generated sections', async () => {
+    const { RESERVED_GHERKIN_SECTIONS } = await import('../lib/gherkin/options.mjs');
+    const { BUILD_GENERATED_SECTION_IDS } = await import('../lib/sections.js');
+    expect([...RESERVED_GHERKIN_SECTIONS]).toEqual(['_meta', ...BUILD_GENERATED_SECTION_IDS]);
+  });
+
+  it('validateGherkinOptions names the option the caller uses', async () => {
+    const { validateGherkinOptions } = await import('../lib/gherkin/options.mjs');
+    expect(() => validateGherkinOptions({ sources: ['f'], section: '../x' })).toThrow(
+      /^\[dk-gherkin\] gherkin\.section must be a single folder name/,
+    );
+    expect(() =>
+      validateGherkinOptions({ sources: ['f'], section: '../x' }, { optionName: (k: string) => `--${k}` }),
+    ).toThrow(/^\[dk-gherkin\] --section must be a single folder name/);
+    expect(validateGherkinOptions({ sources: ['f'] })).toEqual({ sources: ['f'], section: 'behaviour', sourceRoot: '.' });
+  });
+});

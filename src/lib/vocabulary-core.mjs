@@ -104,6 +104,26 @@ export function slug(name) {
     .replace(/^-+|-+$/g, '');
 }
 
+/**
+ * `humanizeSection(name)` — the **single** folder-name → display-title rule
+ * (hoisted from `sections.ts`, gherkin-feature-pages review #7): split on runs of
+ * `-`, `_`, `/` and whitespace, drop empty words, upper-case each word's first
+ * character, join with one space (`shipping-ops` → `Shipping Ops`). The registry
+ * sidebar titles an unregistered section group with it, and the Gherkin generator
+ * titles its directory hubs with it, so a generated hub and its sidebar group
+ * always agree. Pure and locale-free (`toUpperCase` of one character).
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function humanizeSection(name) {
+  return name
+    .split(/[-_/\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 // ---------------------------------------------------------------------------
 // Canonical vocabulary sets (single-sourced — #49 / data-model)
 //
@@ -713,11 +733,14 @@ export const DEFAULT_INDEX_BASENAME = 'README';
 
 /**
  * Normalize the option to a non-empty ordered list (config order = priority).
+ * Exported so the Gherkin page generator (`gherkin/generate.mjs`) derives its hub
+ * basename from the SAME list the detection helpers below use — no second
+ * implementation of the index-basename rule.
  *
  * @param {IndexBasenameOption} [indexBasename]
  * @returns {string[]}
  */
-function normalizeIndexBasenames(indexBasename) {
+export function normalizeIndexBasenames(indexBasename) {
   const list =
     indexBasename === undefined
       ? [DEFAULT_INDEX_BASENAME]

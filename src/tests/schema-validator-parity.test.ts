@@ -405,7 +405,7 @@ describe('index-basename + subtypes options do not perturb shape parity (NFR-001
 // ADR-0046 WP07 — gate parity for GENERATED pages. The build schema is lenient on
 // `updated`/`type` for every page; the standalone gate exempts only MACHINE-
 // GENERATED pages from those authored-metadata rules. Recognition is keyed on the
-// `generated.by` MARKER (`doc-kitty/glossary` | `doc-kitty/gherkin`), plus the
+// `generated.by` MARKER (`doc-kitty/gherkin`), plus the
 // legacy glossary path rule (the glossary codegen writes no stamp, so its existing
 // output must stay valid unchanged). The marker — not the path — is what makes a
 // Gherkin feature page exempt: the SAME page with its `generated` block removed
@@ -425,9 +425,15 @@ describe('schema/validator parity — generated pages are exempt by marker (ADR-
     return copy;
   }
 
-  it('the gate allow-list carries the gherkin pipeline stamp (single-sourced in feature-core)', () => {
-    expect(GENERATED_BY_STAMPS).toEqual(['doc-kitty/glossary', 'doc-kitty/gherkin']);
-    expect(GENERATED_BY_STAMPS).toContain(GHERKIN_GENERATED_BY);
+  it('the gate allow-list is exactly the gherkin pipeline stamp, imported (not repeated) from feature-core', () => {
+    // The glossary codegen never writes a `generated` stamp, so a
+    // `doc-kitty/glossary` entry here was a pure bypass (review #10); the legacy
+    // path rule below is what keeps glossary output valid.
+    expect(GENERATED_BY_STAMPS).toEqual([GHERKIN_GENERATED_BY]);
+    expect(GENERATED_BY_STAMPS).toEqual(['doc-kitty/gherkin']);
+    const gate = readFileSync(new URL('../scripts/validate-frontmatter.mjs', import.meta.url), 'utf8');
+    expect(gate).toMatch(/import \{[^}]*\bGENERATED_BY\b[^}]*\} from '\.\.\/lib\/gherkin\/feature-core\.mjs'/);
+    expect(gate).not.toMatch(/['"]doc-kitty\/(?:gherkin|glossary)['"]/);
   });
 
   it('a generated feature page WITHOUT `updated` passes the gate, and the build schema accepts it too', () => {
@@ -499,9 +505,11 @@ describe('schema/validator parity — generated pages are exempt by marker (ADR-
     expect(validate('glossary-demo/hr.md', ctx).problems).toEqual(['`updated`: required']);
   });
 
-  it('a glossary page stamped `doc-kitty/glossary` is exempt anywhere (the marker rule covers both pipelines)', () => {
+  it('a `doc-kitty/glossary` stamp is NOT an exemption (no pipeline writes it — it would be a bypass)', () => {
     const ctx = { ...parse('generated/glossary-context.md'), generated: { by: 'doc-kitty/glossary', at: 'x' } };
-    expect(isGeneratedPage('vocab/hr.md', ctx)).toBe(true);
-    expect(validate('vocab/hr.md', ctx).problems).toEqual([]);
+    expect(isGeneratedPage('vocab/hr.md', ctx)).toBe(false);
+    expect(validate('vocab/hr.md', ctx).problems).toEqual(['`updated`: required']);
+    // …while real glossary output, under `glossary/`, stays exempt by the path rule.
+    expect(isGeneratedPage('glossary/hr/index.md', ctx)).toBe(true);
   });
 });

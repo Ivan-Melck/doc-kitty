@@ -22,8 +22,8 @@
  * or comments only) is a warning and is skipped.
  *
  * PURITY CONTRACT: imports only `node:fs`, `node:path`, `node:crypto`,
- * `@cucumber/gherkin`, `@cucumber/messages` and `../vocabulary-core.mjs`. NO
- * `astro`/`@astrojs/*`, so it loads under plain `node`.
+ * `@cucumber/gherkin`, `@cucumber/messages`, `../vocabulary-core.mjs` and the
+ * import-free `./text.mjs`. NO `astro`/`@astrojs/*`, so it loads under plain `node`.
  *
  * TYPING: JSDoc only — the repo forbids `.d.ts` sidecars (see the header of
  * `../vocabulary-core.mjs`).
@@ -37,9 +37,14 @@ import path from 'node:path';
 import { AstBuilder, GherkinClassicTokenMatcher, Parser } from '@cucumber/gherkin';
 import { IdGenerator } from '@cucumber/messages';
 import { compareCodeUnit } from '../vocabulary-core.mjs';
+import { GHERKIN_LOG_PREFIX } from './text.mjs';
 
-/** Prefix on every log line / error message this feature emits. */
-export const GHERKIN_LOG_PREFIX = '[dk-gherkin]';
+/**
+ * Prefix on every log line / error message this feature emits. Defined once in
+ * `./text.mjs`; re-exported here for `config.ts` (and tests), which already
+ * import the loader.
+ */
+export { GHERKIN_LOG_PREFIX };
 
 /**
  * One parsed `.feature` file.
@@ -83,12 +88,13 @@ const FEATURE_FILE = /\.feature$/;
 const LOCATION_PREFIX = /^\((\d+):(\d+)\):\s*/;
 
 /**
- * Convert a platform path to POSIX separators.
+ * Convert a platform path to POSIX separators. THE one `toPosix` of the Gherkin
+ * pipeline (`generate.mjs` imports it).
  *
  * @param {string} p
  * @returns {string}
  */
-function toPosix(p) {
+export function toPosix(p) {
   return p.split(path.sep).join('/');
 }
 
@@ -97,7 +103,9 @@ function toPosix(p) {
  * relative to it, sorted with `compareCodeUnit`. Mirrors the
  * `walkMarkdownPaths` shape in `schema.ts` (plain fs, no glob dependency).
  * Skips dot-directories and `node_modules`; follows symlinks but never visits
- * the same real directory twice (cycle-safe).
+ * the same real directory twice (cycle-safe). Each directory's entries are
+ * walked in `compareCodeUnit` order — never filesystem order — so WHICH path
+ * reaches a real directory first (a symlink or its target) is deterministic.
  *
  * @param {string} absBase
  * @returns {string[]}
@@ -123,7 +131,7 @@ function walkFeaturePaths(absBase) {
     /** @type {string[]} */
     let names;
     try {
-      names = readdirSync(dir);
+      names = readdirSync(dir).sort(compareCodeUnit);
     } catch {
       return;
     }

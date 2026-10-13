@@ -57,6 +57,9 @@ const CANONICAL_DEFINITIONS: Record<string, RegExp> = {
   parseStatusesAxis: /\bfunction\s+parseStatusesAxis\b/,
   parseRequiredFields: /\bfunction\s+parseRequiredFields\b/,
   parseCharter: /\bfunction\s+parseCharter\b/,
+  // gherkin-feature-pages review #7: the folder-name → title rule shared by the
+  // registry sidebar (`sections.ts`) and the generated hub titles (`generate.mjs`).
+  humanizeSection: /\bfunction\s+humanizeSection\b/,
 };
 
 /**

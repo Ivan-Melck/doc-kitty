@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -182,5 +182,69 @@ describe('loadFeatures: syntax errors', () => {
     expect(err.message).toBe(
       `${GHERKIN_LOG_PREFIX} f/x.feature:1:1 Language not supported: xx-nope`,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes (post-WP09)
+// ---------------------------------------------------------------------------
+
+describe('walker order is independent of readdir order (review #12)', () => {
+  /**
+   * Load with `readdirSync` returning names in the given order (sorted, or
+   * reverse-sorted), so the result can be compared across filesystem orders.
+   */
+  async function loadWithReaddirOrder(order: 'asc' | 'desc', root: string) {
+    vi.resetModules();
+    vi.doMock('node:fs', async (importOriginal) => {
+      const fs = await importOriginal<typeof import('node:fs')>();
+      const readdir = ((dir: string, opts?: unknown) => {
+        const names = (fs.readdirSync as (d: string, o?: unknown) => string[])(dir, opts).slice().sort();
+        return order === 'asc' ? names : names.reverse();
+      }) as typeof fs.readdirSync;
+      return { ...fs, default: { ...fs, readdirSync: readdir }, readdirSync: readdir };
+    });
+    try {
+      const mod = await import('../lib/gherkin/load.mjs');
+      return mod.loadFeatures({ sources: ['specs'], root }).files.map((f) => f.relPath);
+    } finally {
+      vi.doUnmock('node:fs');
+      vi.resetModules();
+    }
+  }
+
+  it('a symlinked directory and its target de-duplicate to the SAME path in either order', async () => {
+    const root = makeTree({ 'specs/zz-real/x.feature': 'Feature: X\n' });
+    symlinkSync(path.join(root, 'specs/zz-real'), path.join(root, 'specs/aa-link'));
+    const asc = await loadWithReaddirOrder('asc', root);
+    const desc = await loadWithReaddirOrder('desc', root);
+    expect(asc).toEqual(["aa-link/x.feature"]);
+    expect(desc).toEqual(asc);
+  });
+});
+
+describe('one log prefix and one toPosix across the gherkin modules (review #11)', () => {
+  const DIR = fileURLToPath(new URL('../lib/gherkin/', import.meta.url));
+  const code = (name: string) =>
+    readFileSync(path.join(DIR, name), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  it('the literal [dk-gherkin] appears in code only in text.mjs', () => {
+    for (const name of readdirSync(DIR).filter((f) => f.endsWith('.mjs') && f !== 'text.mjs')) {
+      expect(code(name), name).not.toContain('[dk-gherkin]');
+    }
+    expect(code('text.mjs')).toContain("'[dk-gherkin]'");
+  });
+
+  it('load.mjs still exports GHERKIN_LOG_PREFIX (config.ts / tests import it)', () => {
+    expect(GHERKIN_LOG_PREFIX).toBe('[dk-gherkin]');
+  });
+
+  it('toPosix is defined once', () => {
+    const defs = readdirSync(DIR)
+      .filter((f) => f.endsWith('.mjs'))
+      .filter((f) => /function\s+toPosix\b/.test(code(f)));
+    expect(defs).toEqual(['load.mjs']);
   });
 });

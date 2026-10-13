@@ -26,18 +26,21 @@
  *  - A summary line follows the Feature description.
  *
  * Step text, names and table cells are LITERAL text and go through the escapers
- * below, so none of this pipeline's active syntaxes (CommonMark, GFM, smartypants
- * aside, `remark-directive`, Markua attribute lists) fire on them.
+ * below, so none of this pipeline's active syntaxes (CommonMark, GFM — including
+ * its autolink literals — smartypants aside, `remark-directive`, Markua attribute
+ * lists) fire on them.
  *
- * PURITY CONTRACT: the only runtime import is `./text.mjs` (itself import-free),
- * so this module loads in the Astro build AND in the bare-Node
+ * PURITY CONTRACT: the only runtime imports are `./text.mjs` (itself
+ * import-free) and the fs-free `../vocabulary-core.mjs` (for THE code-unit
+ * comparator), so this module loads in the Astro build AND in the bare-Node
  * `generate-feature-pages.mjs --check` gate. The AST is a plain object; the
  * `@cucumber/messages` references below are type-only JSDoc imports.
  *
  * @module gherkin/render
  */
 
-import { dedent, splitNarrative } from './text.mjs';
+import { compareCodeUnit } from '../vocabulary-core.mjs';
+import { GHERKIN_LOG_PREFIX, dedent, featureTitle, splitNarrative } from './text.mjs';
 
 /** @typedef {import('@cucumber/messages').GherkinDocument} GherkinDocument */
 /** @typedef {import('@cucumber/messages').Feature} Feature */
@@ -64,9 +67,40 @@ import { dedent, splitNarrative } from './text.mjs';
  */
 const DIRECTIVE_NAME_STOP = /[\s\p{P}\p{S}]/u;
 
-/** Code-unit comparison (never locale order), matching `compareCodeUnit`. */
-const byCodeUnit = (/** @type {string} */ a, /** @type {string} */ b) =>
-  a < b ? -1 : a > b ? 1 : 0;
+/**
+ * The inert empty HTML comment that splits a GFM autolink literal. GFM turns
+ * `www.x.y`, `http(s)://…` and `a@b.cd` in plain text into links twice over:
+ * micromark's literal-autolink tokenizer, and `mdast-util-gfm-autolink-literal`'s
+ * post-parse transform over each mdast TEXT NODE's decoded value. A backslash or
+ * entity escape (`www\.x.y`, `a&#64;b.cd`) survives only the first — the
+ * decoded text is unchanged, so the transform still links it. Splitting the text
+ * node is what defeats both, and an empty comment does that while rendering
+ * nothing: the visible text, copy-paste, the heading ids and the TOC are all
+ * unchanged (MD033 is off; markdownlint's MD034 no longer sees a bare URL).
+ */
+export const AUTOLINK_BREAK = '<!---->';
+
+/**
+ * Indices in `text` before which {@link AUTOLINK_BREAK} goes, one per GFM
+ * autolink-literal trigger (mirroring the `unsafe` patterns
+ * `mdast-util-gfm-autolink-literal` itself declares for serialising text):
+ *
+ * - `www` + `.` (any case) → break before the `.`;
+ * - `http`/`https` + `://` (any case) → break before the `:`;
+ * - an `@` between an email local-part character (`[+\-.\w]`) and a domain
+ *   character (`[\-.\w]`) → break before the `@`.
+ *
+ * @param {string} text Raw (unescaped) literal text.
+ * @returns {Set<number>}
+ */
+function autolinkBreaks(text) {
+  /** @type {Set<number>} */
+  const at = new Set();
+  for (const m of text.matchAll(/www(?=\.)/gi)) at.add((m.index ?? 0) + 3);
+  for (const m of text.matchAll(/https?(?=:\/\/)/gi)) at.add((m.index ?? 0) + m[0].length);
+  for (const m of text.matchAll(/[-+.\w](?=@[-.\w])/g)) at.add((m.index ?? 0) + 1);
+  return at;
+}
 
 /**
  * Escape literal text for an inline Markdown context (step text, names).
@@ -78,6 +112,8 @@ const byCodeUnit = (/** @type {string} */ a, /** @type {string} */ b) =>
  *   `remark-directive` parses `word:name` (and `10:30`!) as a text directive
  *   even WITHOUT a `[label]`; a name may start with anything but whitespace or
  *   Unicode punctuation/symbols (micromark-extension-directive `factoryName`).
+ * - GFM autolink literals (`www.x.y`, `https://…`, `a@b.cd`) → split with
+ *   {@link AUTOLINK_BREAK} (see there for why a backslash does not work).
  *
  * `|` is NOT escaped here (only meaningful inside table cells; see
  * {@link escapeCell}). Quotes, dashes and ellipses are left for smartypants.
@@ -86,9 +122,11 @@ const byCodeUnit = (/** @type {string} */ a, /** @type {string} */ b) =>
  * @returns {string}
  */
 export function escapeInline(text) {
+  const breaks = autolinkBreaks(text);
   let out = '';
   for (let i = 0; i < text.length; i += 1) {
     const ch = text[i];
+    if (breaks.has(i)) out += AUTOLINK_BREAK;
     switch (ch) {
       case '\\':
       case '`':
@@ -238,7 +276,7 @@ function passthrough(description) {
  * @param {readonly Tag[] | undefined} tags
  */
 function renderTags(tags) {
-  const names = [...new Set((tags ?? []).map((t) => t.name))].sort(byCodeUnit);
+  const names = [...new Set((tags ?? []).map((t) => t.name))].sort(compareCodeUnit);
   return names.map(codeSpan).join(' ');
 }
 
@@ -362,7 +400,7 @@ function warnDuplicates(scenarios, file, warn) {
       seen.set(key, s.location.line);
     } else {
       warn(
-        `[dk-gherkin] ${file}:${s.location.line} duplicate scenario name "${s.name.trim()}" ` +
+        `${GHERKIN_LOG_PREFIX} ${file}:${s.location.line} duplicate scenario name "${s.name.trim()}" ` +
           `(also at line ${first}) — markdownlint MD024 will reject the duplicate heading`,
       );
     }
@@ -383,7 +421,8 @@ export function renderFeatureBody(document, opts = {}) {
   if (!feature) return '';
 
   /** @type {string[]} */
-  const blocks = [`# ${escapeHeading(feature.name.trim() || feature.keyword.trim())}`];
+  // The ONE unnamed-Feature fallback (`featureTitle`), shared with the page title.
+  const blocks = [`# ${escapeHeading(featureTitle(feature.name, feature.keyword))}`];
 
   const { narrative, rest } = splitNarrative(feature.description);
   if (narrative.length > 0) blocks.push(narrative.join('\\\n'));

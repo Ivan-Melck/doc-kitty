@@ -26,7 +26,7 @@ import { GLOSSARY_OUTPUT_DIRNAME } from './glossary/generate.js';
 import path from 'node:path';
 import process from 'node:process';
 import matter from 'gray-matter';
-import { compareCodeUnit } from './vocabulary-core.mjs';
+import { compareCodeUnit, humanizeSection } from './vocabulary-core.mjs';
 import { resolveGovernance } from './vocabulary-loader.mjs';
 import type { SectionSubtypeRule } from './metadata.js';
 
@@ -388,8 +388,8 @@ export function sectionFeeds(registry: SectionRegistry): Record<string, string[]
  *   - `feeds` undefined (no registry, or a registry-free root) → TRUE — no
  *     filtering at all, so the surface stays byte-compatible with pre-feeds;
  *   - the section declares NO `feeds` list (`feeds[sectionId]` undefined) → TRUE
- *     (absent = all — the example corpus declares no `feeds`, so this keeps the
- *     filter INERT on it, dropping nothing);
+ *     (absent = all — a section without a `feeds` list is never filtered, so
+ *     the filter stays INERT for it, dropping nothing);
  *   - the section declares a list → TRUE iff `surface` is in it.
  *
  * This is the COARSE half of the gate; each surface composes it with the finer
@@ -406,15 +406,6 @@ export function feedsSurface(
   const list = feeds[sectionId];
   if (list === undefined) return true;
   return list.includes(surface);
-}
-
-/** Humanize a bare folder name for a leftover (unregistered) section group. */
-function humanizeSection(slug: string): string {
-  return slug
-    .split(/[-_/\s]+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
 }
 
 /**

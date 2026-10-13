@@ -13,8 +13,19 @@
  *
  * OWNERSHIP (contract §7, risk R4): every page carries
  * `generated.by: "doc-kitty/gherkin"`. Before writing, the generator scans the
- * output directory; a file WITHOUT that stamp is authored content and the run
- * fails BEFORE any write. Stale owned files are deleted, then empty directories.
+ * output directory; a file WITHOUT that stamp — or ANY symlink, which a write
+ * would follow out of the section — is authored content and the run fails
+ * BEFORE any write. Stale owned files are deleted, then empty directories. The
+ * planner re-reads every page it plans and refuses (internal error) to emit one
+ * the next run could not recognise as owned, so a generated section can never
+ * lock itself.
+ *
+ * ROUTES (contract §1): besides two sources mapping to one file, three more
+ * plans are fatal because the docs loader would silently drop or merge a page:
+ * a feature named like an index basename (it would BE its directory's index), a
+ * feature page `x.md` beside a generated hub `x/<index>.md` (one route, two
+ * pages), and a leaf that slugs to `log` (a `log.md` at any depth is the loader's
+ * reserved change log, excluded from the collection — `schema.ts`).
  *
  * DETERMINISM (risk R3): {@link planFeaturePages} is a pure function of the model
  * and the docs tree it reads (ADR listing, section registry) — no clock, no
@@ -41,8 +52,15 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import matter from 'gray-matter';
-import { compareCodeUnit, DEFAULT_INDEX_BASENAME, slug } from '../vocabulary-core.mjs';
-import { loadSectionRegistry } from '../vocabulary-loader.mjs';
+import {
+  compareCodeUnit,
+  DEFAULT_INDEX_BASENAME,
+  humanizeSection,
+  isIndexPath,
+  normalizeIndexBasenames,
+  slug,
+} from '../vocabulary-core.mjs';
+import { resolveSectionRegistryEntries } from '../vocabulary-loader.mjs';
 import {
   GENERATED_BY,
   buildFrontmatter,
@@ -50,13 +68,23 @@ import {
   serializeFrontmatter,
   serializeHubFrontmatter,
 } from './feature-core.mjs';
-import { escapeInline, renderFeatureBody } from './render.mjs';
+import { toPosix } from './load.mjs';
+import { DEFAULT_GHERKIN_SECTION } from './options.mjs';
+import { escapeHeading, escapeInline, renderFeatureBody } from './render.mjs';
+import { GHERKIN_LOG_PREFIX as PREFIX } from './text.mjs';
 
 /** @typedef {import('./load.mjs').FeatureModel} FeatureModel */
 /** @typedef {import('./load.mjs').FeatureFile} FeatureFile */
 
-/** Default section id (folder under the docs root) the pages are generated into. */
-export const DEFAULT_GHERKIN_SECTION = 'behaviour';
+/** Default section id (folder under the docs root); defined in `./options.mjs`. */
+export { DEFAULT_GHERKIN_SECTION };
+
+/**
+ * The leaf slug the docs loader reserves: a `log.md` at any depth is an optional,
+ * frontmatter-free change log, EXCLUDED from the docs collection (`schema.ts`
+ * `docsLoader`), so a generated `log.md` would never be built.
+ */
+const RESERVED_LEAF = 'log';
 
 /** The one-line intro every generated hub carries (contract §6). */
 const HUB_INTRO = "Behaviour specifications generated from the repository's Gherkin feature files.";
@@ -89,7 +117,24 @@ function hubDescription(title) {
 /**
  * @typedef {object} GenerateOptions
  * @property {string} outDir Absolute output directory (`<docsRoot>/<section>`).
+ * @property {readonly string[]} [sources] The configured source directories,
+ *   as written — named in the "no .feature files found" warning.
  */
+
+/**
+ * The configured index basenames, through THE shared normaliser
+ * (`normalizeIndexBasenames`, `vocabulary-core.mjs`) — config order, blank
+ * entries dropped, `README` when nothing usable is configured.
+ *
+ * @param {string | readonly string[] | undefined} indexBasename
+ * @returns {string[]}
+ */
+function indexBasenames(indexBasename) {
+  const list = normalizeIndexBasenames(
+    /** @type {string | string[] | undefined} */ (indexBasename),
+  ).filter((b) => typeof b === 'string' && b !== '');
+  return list.length > 0 ? list : [DEFAULT_INDEX_BASENAME];
+}
 
 /**
  * The first configured index basename — the hub file stem. Taking the first
@@ -100,26 +145,17 @@ function hubDescription(title) {
  * @returns {string}
  */
 export function hubBasename(indexBasename) {
-  if (Array.isArray(indexBasename)) return indexBasename[0] ?? DEFAULT_INDEX_BASENAME;
-  return typeof indexBasename === 'string' && indexBasename !== ''
-    ? indexBasename
-    : DEFAULT_INDEX_BASENAME;
+  return indexBasenames(indexBasename)[0];
 }
 
-/** `shipping-ops` → `Shipping ops`: a hub title for a directory with no registry label. */
-function humanise(segment) {
-  const words = segment.replace(/[-_]+/g, ' ').trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-/** Full lowercase hex sha256 of a string. */
+/**
+ * Full lowercase hex sha256 of a string.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
 function sha256(text) {
   return createHash('sha256').update(text).digest('hex');
-}
-
-/** POSIX-normalise a path (Windows separators → `/`). */
-function toPosix(p) {
-  return p.split(path.sep).join('/');
 }
 
 /**
@@ -127,7 +163,10 @@ function toPosix(p) {
  * output path (POSIX, relative to `<docsRoot>/<section>`) to its exact contents,
  * in code-unit order. The single source the writer and the `--check` gate share.
  *
- * Fatal (throws): two sources mapping to the same output path.
+ * Fatal (throws): two sources mapping to the same output path; a feature named
+ * like an index basename; a feature page and a directory hub on the same route
+ * (`x.feature` beside `x/…`); a leaf slugging to the reserved `log`; and — an
+ * internal error — a planned page whose frontmatter would not read back as owned.
  *
  * @param {FeatureModel} model
  * @param {PlanOptions} opts
@@ -146,30 +185,29 @@ export function planFeaturePages(model, opts) {
   const plan = new Map();
   if (model.files.length === 0) return plan;
 
-  const hubFile = `${hubBasename(indexBasename)}.md`;
-  // Every configured index basename, lowercased. The loader matches index
-  // basenames case-insensitively, so a feature whose leaf slug is one of them
-  // (`README.feature` → `readme.md`, or `index.feature` under
-  // `['README','index']`) would be routed as its directory's index and collide
-  // with the generated hub — and on a case-insensitive filesystem overwrite it.
-  const indexLeaves = new Set(
-    [hubBasename(indexBasename), ...(Array.isArray(indexBasename) ? indexBasename : [])].map((b) =>
-      b.toLowerCase(),
-    ),
-  );
+  const basenames = indexBasenames(indexBasename);
+  const hubFile = `${basenames[0]}.md`;
   const adrDir = path.join(docsRoot, 'adr');
   const adrFileNames = existsSync(adrDir)
     ? readdirSync(adrDir).filter((f) => f.endsWith('.md')).sort(compareCodeUnit)
     : [];
-  const registry = loadSectionRegistry(docsRoot);
+  // The registry the BUILD uses (charter.yaml `sections.entries`, else the
+  // legacy sections.yaml): the root hub label and the @dk:mission prefix.
+  const registry = resolveSectionRegistryEntries(docsRoot);
   const mission = missionPrefix(registry);
-  const sectionLabel = registry?.find((s) => s.id === section)?.label ?? humanise(section);
+  const sectionLabel = registry?.find((s) => s.id === section)?.label ?? humanizeSection(section);
 
   /** Output path → the source that claimed it (for the collision message). */
   /** @type {Map<string, string>} */
   const claimedBy = new Map();
-  /** Directory (POSIX, '' = section root) → its children. */
-  /** @type {Map<string, Array<{ out: string, title: string, description: string, href: string }>>} */
+  /** Directory (POSIX, slugged) → the first source found below it. */
+  /** @type {Map<string, string>} */
+  const dirSource = new Map();
+  /**
+   * Directory (POSIX, '' = section root) → its children. `body` is the list
+   * line's description as Markdown (already escaped where it is literal text).
+   */
+  /** @type {Map<string, Array<{ out: string, title: string, body: string, href: string }>>} */
   const children = new Map([['', []]]);
   /** @type {Map<string, string>} */
   const dirTitles = new Map([['', sectionLabel]]);
@@ -181,26 +219,39 @@ export function planFeaturePages(model, opts) {
     const segments = file.relPath.replace(/\.feature$/, '').split('/');
     const slugged = segments.map((s) => slug(s));
     if (slugged.some((s) => s === '')) {
-      throw new Error(`[dk-gherkin] ${sourceLabel}: path has a segment with no slug-able characters`);
+      throw new Error(`${PREFIX} ${sourceLabel}: path has a segment with no slug-able characters`);
     }
     const out = `${slugged.join('/')}.md`;
-    if (indexLeaves.has(slugged[slugged.length - 1])) {
+    // The loader matches index basenames case-insensitively (the shared
+    // `isIndexPath` rule), so a feature whose leaf slug is one of them
+    // (`README.feature` → `readme.md`, or `index.feature` under
+    // `['README','index']`) would be routed as its directory's index and collide
+    // with the generated hub — and on a case-insensitive filesystem overwrite it.
+    if (isIndexPath(out, basenames)) {
       const hubOut = [...slugged.slice(0, -1), hubFile].join('/');
       throw new Error(
-        `[dk-gherkin] output collision: ${sourceLabel} maps to ${section}/${out}, an index ` +
+        `${PREFIX} output collision: ${sourceLabel} maps to ${section}/${out}, an index ` +
           `basename that collides with the generated hub ${section}/${hubOut}; rename the feature file`,
+      );
+    }
+    if (slugged[slugged.length - 1] === RESERVED_LEAF) {
+      throw new Error(
+        `${PREFIX} reserved output name: ${sourceLabel} maps to ${section}/${out}, but log.md is the ` +
+          'reserved change-log file the docs loader excludes, so the page would never be built and ' +
+          'its hub link would dangle; rename the feature file',
       );
     }
     const prior = claimedBy.get(out);
     if (prior !== undefined) {
       throw new Error(
-        `[dk-gherkin] output collision: ${prior} and ${sourceLabel} both map to ${section}/${out}`,
+        `${PREFIX} output collision: ${prior} and ${sourceLabel} both map to ${section}/${out}`,
       );
     }
     claimedBy.set(out, sourceLabel);
 
     const { fields, warnings } = buildFrontmatter({
       featureName: feature.name,
+      featureKeyword: feature.keyword,
       description: feature.description,
       tags: feature.tags,
       file: sourceLabel,
@@ -227,17 +278,35 @@ export function planFeaturePages(model, opts) {
       children.get(parent)?.push({
         out,
         title: fields.title,
-        description: fields.description,
+        // The Feature description's first sentence: Markdown passthrough, the
+        // same trust boundary as the page body it was taken from (contract §4).
+        body: fields.description,
         href: `./${slugged[slugged.length - 1]}/`,
       });
     }
     for (let depth = dirs.length; depth > 0; depth -= 1) {
       const dir = dirs.slice(0, depth).join('/');
       if (dirTitles.has(dir)) continue;
-      dirTitles.set(dir, humanise(segments[depth - 1]));
+      dirTitles.set(dir, humanizeSection(segments[depth - 1]));
+      dirSource.set(dir, sourceLabel);
       const up = dirs.slice(0, depth - 1).join('/');
       if (!children.has(up)) children.set(up, []);
       if (!children.has(dir)) children.set(dir, []);
+    }
+  }
+
+  // A feature page `x.md` beside a generated hub `x/<index>.md` is ONE route
+  // (`<section>/x`): the loader keeps one page and silently drops the other, in
+  // either source order. Checked once every directory is known.
+  for (const dir of dirTitles.keys()) {
+    if (dir === '') continue;
+    const leafSource = claimedBy.get(`${dir}.md`);
+    if (leafSource !== undefined) {
+      throw new Error(
+        `${PREFIX} route collision: ${leafSource} (page ${section}/${dir}.md) and ` +
+          `${dirSource.get(dir)} (directory hub ${section}/${dir}/${hubFile}) both route to ` +
+          `${section}/${dir}; rename the feature file or its directory`,
+      );
     }
   }
 
@@ -249,7 +318,9 @@ export function planFeaturePages(model, opts) {
     children.get(up)?.push({
       out: `${dir}/${hubFile}`,
       title,
-      description: hubDescription(title),
+      // The (humanised) directory name is LITERAL text: escape it in the body.
+      // The hub's own frontmatter `description` keeps it raw (JSON-quoted).
+      body: hubDescription(escapeInline(title)),
       href: `./${dir.split('/').pop()}/`,
     });
   }
@@ -260,29 +331,43 @@ export function planFeaturePages(model, opts) {
     // `generated.at` hashes the sorted child list (contract §6): it changes
     // exactly when a child is added, removed or renamed.
     const hash = sha256(sorted.map((c) => c.out).join('\n'));
-    const items = sorted.map(
-      (c) => `- [${escapeInline(c.title)}](${c.href}) — ${c.description}`,
-    );
+    const items = sorted.map((c) => `- [${escapeInline(c.title)}](${c.href}) — ${c.body}`);
     const out = dir === '' ? hubFile : `${dir}/${hubFile}`;
     if (claimedBy.has(out)) {
       throw new Error(
-        `[dk-gherkin] output collision: ${claimedBy.get(out)} maps onto the generated hub ${section}/${out}`,
+        `${PREFIX} output collision: ${claimedBy.get(out)} maps onto the generated hub ${section}/${out}`,
       );
     }
     plan.set(
       out,
       `${serializeHubFrontmatter({ title, description, hash })}\n\n` +
-        `# ${escapeInline(title)}\n\n${HUB_INTRO}\n\n${items.join('\n')}\n`,
+        `# ${escapeHeading(title)}\n\n${HUB_INTRO}\n\n${items.join('\n')}\n`,
     );
   }
 
-  return new Map([...plan].sort(([a], [b]) => compareCodeUnit(a, b)));
+  const sortedPlan = new Map([...plan].sort(([a], [b]) => compareCodeUnit(a, b)));
+  // Final defence (review #1): never plan a page the NEXT run would classify as
+  // authored — its frontmatter must parse and carry the stamp, or the section
+  // would lock itself ("refusing to write") until someone deletes it by hand.
+  for (const [rel, contents] of sortedPlan) {
+    if (!isOwnedPage(contents)) {
+      throw new Error(
+        `${PREFIX} internal error: the planned page ${rel} does not read back as generated by ` +
+          `${GENERATED_BY} (its frontmatter does not parse, or lost the stamp); refusing to write ` +
+          'a page the next run could not own. Please report this with the source feature file.',
+      );
+    }
+  }
+  return sortedPlan;
 }
 
 /**
  * Walk `outDir` and classify every file: OWNED (a `.md` whose frontmatter has
- * `generated.by === "doc-kitty/gherkin"`) or AUTHORED (anything else). Dotfiles
- * are ignored. Returns POSIX paths relative to `outDir`, code-unit sorted.
+ * `generated.by === "doc-kitty/gherkin"`) or AUTHORED (anything else). ANY
+ * symlink — to a file or a directory, stamped target or not — is AUTHORED and
+ * never followed: the writer would otherwise write (or prune) through it,
+ * outside `outDir`. Dotfiles are ignored. Returns POSIX paths relative to
+ * `outDir`, code-unit sorted.
  *
  * @param {string} outDir
  * @returns {{ owned: string[], authored: string[] }}
@@ -298,11 +383,15 @@ export function scanOutputDir(outDir) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (entry.name.startsWith('.')) continue;
       const abs = path.join(dir, entry.name);
+      const rel = toPosix(path.relative(outDir, abs));
+      if (entry.isSymbolicLink()) {
+        authored.push(rel);
+        continue;
+      }
       if (entry.isDirectory()) {
         walk(abs);
         continue;
       }
-      const rel = toPosix(path.relative(outDir, abs));
       if (entry.name.endsWith('.md') && isOwnedPage(readFileSync(abs, 'utf8'))) owned.push(rel);
       else authored.push(rel);
     }
@@ -361,18 +450,22 @@ export function diffFeaturePages(plan, outDir) {
  * @returns {{ written: string[], unchanged: string[], removed: string[] }}
  */
 export function generateFeaturePages(model, opts) {
-  const { outDir, warn = () => {} } = opts;
+  const { outDir, sources, warn = () => {} } = opts;
   const plan = planFeaturePages(model, opts);
   const { owned, authored } = scanOutputDir(outDir);
   if (authored.length > 0) {
     throw new Error(
-      `[dk-gherkin] refusing to write into ${outDir}: ${authored.join(', ')} ` +
+      `${PREFIX} refusing to write into ${outDir}: ${authored.join(', ')} ` +
         `${authored.length === 1 ? 'is' : 'are'} not generated by ${GENERATED_BY} ` +
-        '(a generated section has a single owner; move authored pages elsewhere or choose another gherkin.section)',
+        '(a generated section has a single owner, and a symlink always counts as authored; ' +
+        'move authored pages elsewhere or choose another gherkin.section)',
     );
   }
   if (model.files.length === 0) {
-    warn(`[dk-gherkin] no .feature files found; ${owned.length} previously generated page(s) will be removed`);
+    const where = sources && sources.length > 0 ? ` in ${sources.join(', ')}` : '';
+    warn(
+      `${PREFIX} no .feature files found${where}; ${owned.length} previously generated page(s) will be removed`,
+    );
   }
 
   /** @type {string[]} */

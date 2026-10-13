@@ -78,7 +78,8 @@ import {
   glossaryDefinitions,
 } from './glossary/definitions-payload.js';
 import { GHERKIN_LOG_PREFIX, loadFeatures } from './gherkin/load.mjs';
-import { DEFAULT_GHERKIN_SECTION, generateFeaturePages } from './gherkin/generate.mjs';
+import { generateFeaturePages } from './gherkin/generate.mjs';
+import { validateGherkinOptions } from './gherkin/options.mjs';
 
 /**
  * Internal cross-boundary signal (integration → standalone routes), NOT a public
@@ -1172,60 +1173,18 @@ interface ResolvedGherkinOptions {
 /**
  * Validate + default the `gherkin` option EAGERLY, at `defineDocKittyIntegrations`
  * time, so a misconfiguration fails before any hook runs (house posture: config
- * errors are build-fatal and name the feature). Throws a `[dk-gherkin]` Error for:
- *  - `sources` that is not a non-empty array of non-empty strings;
- *  - a `section` that is not ONE safe path segment (empty, `.`/`..`, a dot-folder,
- *    or containing `/` or `\`), since it becomes `<docsDir>/<section>` and the
- *    generator prunes inside it;
- *  - a `section` that names a reserved folder (`_meta`, the registry's home) or
- *    ANOTHER generator's section (`BUILD_GENERATED_SECTION_IDS`, i.e. `glossary`):
- *    a generated section has a single owner, and the two generators would fight.
- *    A collision with an AUTHORED folder is caught later by the generator itself
- *    (it refuses to write into a directory holding non-generated files).
+ * errors are build-fatal and name the feature). The rules (non-empty `sources`;
+ * `section` ONE safe folder name, not `_meta` and not another generator's
+ * section) live ONCE in `./gherkin/options.mjs`, shared with the bare-Node
+ * `generate-feature-pages.mjs` CLI; this passes the reserved list derived from
+ * `BUILD_GENERATED_SECTION_IDS` (a parity test pins the CLI's default to it).
  */
 function resolveGherkinOptions(
   raw: NonNullable<DocKittyOptions['gherkin']>,
 ): ResolvedGherkinOptions {
-  const { sources, section = DEFAULT_GHERKIN_SECTION, sourceUrlPrefix, sourceRoot = '.' } = raw;
-  if (
-    !Array.isArray(sources) ||
-    sources.length === 0 ||
-    sources.some((s) => typeof s !== 'string' || s.trim() === '')
-  ) {
-    throw new Error(
-      `${GHERKIN_LOG_PREFIX} gherkin.sources must be a non-empty array of directory paths ` +
-        `(relative to the site root); got ${JSON.stringify(sources)}`,
-    );
-  }
-  if (
-    typeof section !== 'string' ||
-    section === '' ||
-    section.startsWith('.') ||
-    /[/\\]/.test(section)
-  ) {
-    throw new Error(
-      `${GHERKIN_LOG_PREFIX} gherkin.section must be a single folder name under the docs dir ` +
-        `(no '/', '\\', '..' or leading '.'); got ${JSON.stringify(section)}`,
-    );
-  }
-  if (section === '_meta' || BUILD_GENERATED_SECTION_IDS.includes(section)) {
-    throw new Error(
-      `${GHERKIN_LOG_PREFIX} gherkin.section ${JSON.stringify(section)} is reserved ` +
-        `(owned by another generator or the section registry); choose another section id`,
-    );
-  }
-  if (sourceUrlPrefix !== undefined && typeof sourceUrlPrefix !== 'string') {
-    throw new Error(`${GHERKIN_LOG_PREFIX} gherkin.sourceUrlPrefix must be a string`);
-  }
-  if (typeof sourceRoot !== 'string' || sourceRoot === '') {
-    throw new Error(`${GHERKIN_LOG_PREFIX} gherkin.sourceRoot must be a non-empty path string`);
-  }
-  return {
-    sources: [...sources],
-    section,
-    ...(sourceUrlPrefix !== undefined ? { sourceUrlPrefix } : {}),
-    sourceRoot,
-  };
+  return validateGherkinOptions(raw, {
+    reservedSections: ['_meta', ...BUILD_GENERATED_SECTION_IDS],
+  });
 }
 
 /**
@@ -1260,6 +1219,7 @@ function gherkinIntegration(
         const model = loadFeatures({ sources: opts.sources, root, warn });
         const docsRoot = path.resolve(root, docsDir);
         const { written, unchanged, removed } = generateFeaturePages(model, {
+          sources: opts.sources,
           docsRoot,
           outDir: path.resolve(docsRoot, opts.section),
           section: opts.section,

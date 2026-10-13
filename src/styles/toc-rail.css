@@ -16,6 +16,23 @@
  */
 
 /*
+ * WCAG 2.5.8 target size (axe `target-size`, wcag22aa) for the desktop "On this
+ * page" links. Starlight's `TableOfContentsList.astro` renders each as a block
+ * with `padding-block: 0.25rem` and `line-height: 1.25` at the small TOC font
+ * size: ~23px tall, so a densely nested outline (a generated behaviour page's
+ * Rule → Scenario entries) fails the 24px minimum. Scoped to the DESKTOP TOC nav
+ * only (the mobile dropdown's nav is `starlight__on-this-page--mobile`, and its
+ * links already carry `padding-block: 0.5rem`). Specificity (0,1,2) outranks
+ * Starlight's scoped `a` rule; the flex centring keeps the label vertically
+ * centred in the taller box.
+ */
+nav[aria-labelledby='starlight__on-this-page'] a {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+/*
  * The toggle control (C-3). Base rule applies at any width but stays hidden until
  * the two-column breakpoint (the media query below reveals it) — desktop-only per
  * C-4/NFR-003, so a fresh narrow load never shows it.

@@ -23,16 +23,41 @@
  */
 
 import { compareCodeUnit } from '../vocabulary-core.mjs';
-import { splitNarrative } from './text.mjs';
+import { GHERKIN_LOG_PREFIX as PREFIX, featureTitle, splitNarrative } from './text.mjs';
 
 /** The `generated.by` stamp of every page this generator owns. */
 export const GENERATED_BY = 'doc-kitty/gherkin';
 
-/** Warning/error prefix shared by the whole Gherkin pipeline (contract §7). */
-const PREFIX = '[dk-gherkin]';
-
 /** Maximum `description` length (contract §3 rule 4). */
-export const DESCRIPTION_MAX = 180;
+const DESCRIPTION_MAX = 180;
+
+/**
+ * A well-formed `doc_status` value: a lower-case slug (`active`, `in-review`).
+ * Wide enough for charter-extensible statuses (contract §2: a non-canonical
+ * value passes through and the gate warns), narrow enough that the value is
+ * always a plain YAML string scalar when emitted bare — never a tag (`!x`), an
+ * alias (`*a`), a flow collection (`[x]`), a mapping (`foo:`), or a non-string
+ * scalar (`null`, `true`, `1e3`). Such a value would make the page unreadable as
+ * an OWNED page on the next run and lock the section (review #1).
+ */
+const STATUS_VALUE = /^[a-z][a-z0-9-]*$/;
+
+/**
+ * Slug-shaped words a YAML parser resolves to a NON-string scalar: `null` /
+ * `true` / `false` (YAML 1.2 core, js-yaml/gray-matter) plus the YAML 1.1
+ * booleans other parsers still honour. Never a valid status.
+ */
+const YAML_KEYWORDS = new Set(['null', 'true', 'false', 'yes', 'no', 'on', 'off', 'y', 'n']);
+
+/**
+ * Is `value` a well-formed `doc_status` that is safe to emit as a bare YAML scalar?
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isStatusSlug(value) {
+  return STATUS_VALUE.test(value) && !YAML_KEYWORDS.has(value);
+}
 
 /** `audience.guidance_text` when the Feature has no narrative (contract §2). */
 export const DEFAULT_GUIDANCE_TEXT = "This behaviour is specified from this persona's point of view.";
@@ -41,7 +66,7 @@ export const DEFAULT_GUIDANCE_TEXT = "This behaviour is specified from this pers
 const DK_PREFIX = '@dk:';
 
 /** Every known `@dk:` key, in contract §2 table order (also the did-you-mean pool). */
-export const METADATA_KEYS = /** @type {const} */ ([
+const METADATA_KEYS = /** @type {const} */ ([
   'context',
   'status',
   'persona',
@@ -207,7 +232,10 @@ function shortHash(hash) {
  * - Any other tag passes through to `tags` without its `@`, de-duplicated and
  *   code-unit sorted.
  * - Unknown keys, a missing `=value`, repeats of single-valued keys (first wins),
- *   an invalid `updated`/`priority`/`autolink` value → a warning, value ignored.
+ *   an invalid `status`/`updated`/`priority`/`autolink` value → a warning, value
+ *   ignored. A `status` must be a lower-case slug (`/^[a-z][a-z0-9-]*$/`, and
+ *   not a YAML keyword such as `null`/`true`); an ignored one falls back to the
+ *   `@wip`/`@deprecated` shorthand or `active`.
  *
  * @param {ReadonlyArray<GherkinTag> | undefined} tags The Feature's AST tags.
  * @param {{ file?: string }} [options] `file` names the source in warnings.
@@ -265,6 +293,13 @@ export function parseMetadataTags(tags, { file } = {}) {
       if (single.has(key)) {
         warnings.push(
           `${PREFIX} ${loc} multiple @dk:${key} tags; keeping the first (${single.get(key)}), ignoring ${value}`,
+        );
+        continue;
+      }
+      if (key === 'status' && !isStatusSlug(value)) {
+        warnings.push(
+          `${PREFIX} ${loc} invalid @dk:status=${value} (expected a lower-case slug such as ` +
+            'active, draft or in-review); ignored',
         );
         continue;
       }
@@ -347,7 +382,7 @@ export function extractNarrative(description) {
  * @param {string} text
  * @returns {string}
  */
-export function firstSentence(text) {
+function firstSentence(text) {
   const collapsed = text.replace(/\s+/g, ' ').trim();
   const m = /[.!?](?=\s|$)/.exec(collapsed);
   return m ? collapsed.slice(0, m.index + 1) : collapsed;
@@ -508,8 +543,14 @@ export function missionPrefix(registry) {
 /**
  * Assemble the frontmatter of one generated feature page (contract §2–3).
  *
+ * An unnamed Feature (`Feature:` with nothing after it) takes the ONE fallback
+ * title `featureTitle` (`./text.mjs`) gives the body H1 too — its trimmed keyword
+ * — for `title` and the description fallback, with a warning.
+ *
  * @param {object} input
  * @param {string} input.featureName The Feature name (→ `title`).
+ * @param {string} [input.featureKeyword] The Feature keyword as written (the
+ *   unnamed-Feature fallback). Omitted ⇒ `Feature`.
  * @param {string | undefined} input.description The Feature description (raw, as parsed).
  * @param {ReadonlyArray<GherkinTag> | undefined} input.tags The Feature-level AST tags.
  * @param {string} [input.file] Source path for warnings.
@@ -524,6 +565,7 @@ export function missionPrefix(registry) {
  */
 export function buildFrontmatter({
   featureName,
+  featureKeyword,
   description,
   tags,
   file,
@@ -534,8 +576,16 @@ export function buildFrontmatter({
   location,
 }) {
   const parsed = parseMetadataTags(tags, { file });
-  const derived = deriveDescription(featureName, description, { file, location });
-  const warnings = [...parsed.warnings, ...derived.warnings];
+  const title = featureTitle(featureName, featureKeyword);
+  /** @type {string[]} */
+  const nameWarnings = [];
+  if (String(featureName ?? '').trim() === '') {
+    nameWarnings.push(
+      `${PREFIX} ${where(file, location && { line: location.line })} Feature has no name; using "${title}"`,
+    );
+  }
+  const derived = deriveDescription(title, description, { file, location });
+  const warnings = [...nameWarnings, ...parsed.warnings, ...derived.warnings];
   const { meta } = parsed;
 
   const mission =
@@ -553,7 +603,7 @@ export function buildFrontmatter({
 
   /** @type {FeatureFrontmatter} */
   const fields = {
-    title: String(featureName ?? '').trim(),
+    title,
     description: derived.description,
     kind: 'Specification',
     doc_status: meta.status,
@@ -576,8 +626,11 @@ const q = (/** @type {string} */ value) => JSON.stringify(value);
 
 /**
  * Serialise {@link FeatureFrontmatter} as the `---`-fenced block, in the fixed
- * contract §3 key order. String scalars are `JSON.stringify`-quoted; `kind`,
- * `doc_status` and `updated` are bare; `tags` is an inline JSON array; the list
+ * contract §3 key order. String scalars are `JSON.stringify`-quoted; `kind`
+ * and `updated` are bare, and so is `doc_status` when it is a lower-case slug —
+ * any other value is quoted (defence in depth behind {@link parseMetadataTags}'s
+ * validation: the block must always read back as an OWNED page). `tags` is an
+ * inline JSON array; the list
  * and map keys are block YAML. Empty/absent optional keys are omitted. `tags` and
  * `related` are (re-)de-duplicated and code-unit sorted. No trailing newline.
  *
@@ -589,7 +642,8 @@ export function serializeFrontmatter(fields) {
   lines.push(`title: ${q(fields.title)}`);
   lines.push(`description: ${q(fields.description)}`);
   lines.push(`kind: ${fields.kind ?? 'Specification'}`);
-  lines.push(`doc_status: ${fields.doc_status}`);
+  const status = String(fields.doc_status);
+  lines.push(`doc_status: ${isStatusSlug(status) ? status : q(status)}`);
   if (fields.updated !== undefined) lines.push(`updated: ${fields.updated}`);
   if (fields.glossary_context !== undefined) lines.push(`glossary_context: ${q(fields.glossary_context)}`);
   if (fields.glossary_autolink === false) lines.push('glossary_autolink: false');
