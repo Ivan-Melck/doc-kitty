@@ -1,15 +1,17 @@
 ---
 title: Authoring a document
-description: Create a page that satisfies DocKitty.
+description: Create a page that satisfies DocKitty, and write Gherkin behaviour specs that publish as Specification pages.
 doc_status: active
 updated: 2026-10-13
 type: Guide
 kind: How-To
-tags: [authoring, workflow]
+tags: [authoring, workflow, gherkin, bdd]
 related:
   - context/convention
   - adr/0033-flexible-section-identity
   - adr/0034-redirect-coverage-gate
+  - adr/0046-gherkin-feature-pages
+  - architecture/gherkin-pages
 ---
 
 # Authoring a document
@@ -163,3 +165,131 @@ section per above), prove the old URLs still work before you ship:
 
    If a package script already names a directory, a directory you add is
    appended and the gate checks the script's own.
+
+## Authoring behaviour specs
+
+A site that turns on the `gherkin` option (see
+[consumer setup](./consumer-setup.md#optional-gherkin-feature-pages)) publishes its
+Gherkin `.feature` files as `kind: Specification` pages. You write the `.feature`
+file; the toolkit writes the page. The design is in
+[Gherkin feature pages](../architecture/gherkin-pages.md) and
+[ADR-0046](../adr/0046-gherkin-feature-pages.md).
+
+### Where the files live
+
+`.feature` files stay where your test runner expects them, in the directories
+listed in `gherkin.sources`. The example site keeps them in `example/features/`.
+The directory layout carries over: `features/shipping/book-consignment.feature`
+becomes `docs/behaviour/shipping/book-consignment.md` (`behaviour` is the default
+section), and every directory gets a generated hub page.
+
+Don't edit or add files under the generated section. Changes are overwritten on
+the next run, and any file in that folder without the generator's
+`generated.by` stamp fails the build. Two other names fail too: a feature file
+named like an index page (`README.feature`, or `index.feature` when the site
+accepts `index`), and two sources that map to the same output path.
+
+### Metadata tags
+
+Gherkin has no frontmatter, so page metadata goes in **feature-level tags** in the
+`@dk:<key>=<value>` namespace. Test runners ignore unknown tags, so they don't
+change how the feature runs.
+
+```gherkin
+@dk:context=shipping @dk:persona=example-persona @dk:mission=mission-alpha
+@dk:adr=1 @FR-003
+Feature: Book a consignment
+  As a shipper
+  I want to book cargo onto a sailing
+  So that my goods travel on a confirmed slot
+
+  A booking reserves space on one sailing for one consignment.
+```
+
+| Tag | Becomes | Notes |
+|-----|---------|-------|
+| `@dk:context=<ctx>` | `glossary_context` | The glossary context used to resolve terms in the step text. At most one. |
+| `@dk:status=<s>` | `doc_status` | Wins over `@wip` and `@deprecated`. A non-canonical value passes through, and the frontmatter gate warns about it. |
+| `@wip` | `doc_status: draft` | Draft pages are left out of the sitemap, feeds and agent API. |
+| `@deprecated` | `doc_status: deprecated` | |
+| *(none)* | `doc_status: active` | A committed feature is live behaviour. |
+| `@dk:persona=<slug>` | an `audience` entry | Repeatable. The guidance text is the feature's `As a … I want … So that …` narrative, or a fixed sentence when there is none. The persona page must exist. |
+| `@dk:mission=<slug>` | `related: plans/missions/<slug>` | Repeatable. The prefix comes from the registry's `Mission` subtype; with none it is `plans/` and the generator warns. |
+| `@dk:adr=<n>` | `related: adr/<NNNN-…>` | Repeatable. `1` resolves to the `adr/0001-*.md` file. An unknown number stays `adr/<NNNN>` and fails the link gate. |
+| `@dk:related=<slug>` | `related: <slug>` | Repeatable. Links any other page. |
+| `@dk:updated=<YYYY-MM-DD>` | `updated` | Optional. Without it the page is exempt from `updated`. |
+| `@dk:autolink=false` | `glossary_autolink: false` | Turns off glossary auto-linking for the page. |
+| `@dk:priority=<0..1>` | `agent.priority` | Optional agent hint. |
+| any other tag | `tags` | Passed through without the `@`, such as `@smoke` or `@FR-003`. |
+
+`@dk:` values run to the end of the tag, after the first `=`. A misspelt key, a
+missing value, a second copy of a single-valued key, or an invalid `updated`,
+`priority` or `autolink` value is a build warning and is ignored. Every
+`related` and `audience` target must resolve, through the same gates as
+hand-written refs.
+
+Only **feature** tags are metadata. Tags on a Rule, Scenario or Examples block,
+`@dk:` ones included, are shown on the page as inline code.
+
+Put a `@dk:context` on every feature. Without it, a step that uses a term defined
+in more than one glossary context is left unlinked and logs a collision warning.
+Across a large suite, that floods the build log.
+
+### Write declarative scenarios
+
+The page is read by people, not only run by the test suite. Describe behaviour in
+domain terms, not user-interface mechanics:
+
+```gherkin
+# Reads well, and links glossary terms
+When the shipper books the consignment onto the sailing
+Then the booking is confirmed
+
+# Reads badly once published
+When I click "#book-button"
+And I fill in "size" with "12"
+```
+
+Click paths and CSS selectors publish as they are written. Nothing checks for
+them yet, so the style is the author's responsibility.
+
+### What renders as written, and what as Markdown
+
+- **Literal text.** Step text, feature, rule, scenario and examples names, and table
+  cells are shown exactly as typed. Characters that would trigger Markdown,
+  HTML, directives or Markua attributes are escaped, so `*`, `_`, `<tag>`,
+  `[x]`, `~`, `{…}` and `word:name` appear literally.
+- **Markdown.** Descriptions under a Feature, Rule, Scenario or Examples line are
+  dedented and passed through as Markdown, so links, emphasis and lists work.
+  This is the same trust level as any page in `docs/`.
+- **Doc strings** become fenced code blocks, verbatim. The media type
+  (`"""json`) is the fence language; without one it is `text`.
+- **Outline placeholders** such as `<size>` render as inline code, and the
+  outline is shown once with its examples table. It is not expanded per row.
+- **Comments** (`# …`) aren't rendered.
+
+The first sentence after the narrative becomes the page `description`. Keep it
+under 180 characters; a longer one is truncated with a warning. Give scenarios
+under the same parent distinct names: duplicates become duplicate headings, which
+markdownlint rejects.
+
+### Regenerating and the drift gate
+
+Pages regenerate on every build and every dev-server start. Editing a watched
+`.feature` restarts the dev server; a new file shows up after the next restart.
+Without a build, regenerate with the generator script. In this repository that is:
+
+```sh
+pnpm generate:features
+```
+
+A consumer site runs the `dockitty-generate-feature-pages` binary with flags
+matching its `gherkin` option. Commit the regenerated pages with the `.feature`
+change. CI checks that they match:
+
+```sh
+pnpm validate:features
+```
+
+It fails, listing each added, changed, stale or authored path, when the committed
+pages differ from what the sources produce.

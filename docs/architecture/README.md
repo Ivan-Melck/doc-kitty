@@ -2,7 +2,7 @@
 title: Architecture
 description: "How the toolkit turns a Common Docs tree into a site plus feeds and an agent-API: the current design."
 doc_status: active
-updated: 2026-08-21
+updated: 2026-10-13
 type: Architecture
 kind: Hub
 agent:
@@ -52,6 +52,9 @@ page:
   derived `--dk-*` values and atomic-design chrome, self-contained.
 - [Slide decks](./slide-decks.md) — how a Markdown-authored deck becomes a static
   reveal.js presentation: the splitting convention, the build pipeline, the fallback.
+- [Gherkin feature pages](./gherkin-pages.md) — how the opt-in `gherkin` preset
+  generates `Specification` pages from `.feature` files: the codegen seam,
+  ownership and pruning, determinism, and the `--check` drift gate.
 
 ## Build and delivery
 
