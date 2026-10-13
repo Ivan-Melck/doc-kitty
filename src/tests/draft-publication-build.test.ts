@@ -49,6 +49,7 @@ type Mode = keyof typeof OUT;
 const SIDEBAR_DRAFTS = [
   'context/audience/draft-persona',
   'adr/template',
+  'behaviour/shipping/track-consignment',
   'guides/markua-footnotes-malformed',
 ];
 const DRAFT_DECK = 'presentations/draft-preview';

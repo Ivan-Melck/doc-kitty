@@ -140,6 +140,7 @@ describe('WP04 — sidebar and TOC shaping in the built example', () => {
       'Architecture',
       'Decision Records',
       'Plans',
+      'Behaviour',
       'Guides',
       'Rhetoric',
       'Presentations',
