@@ -105,13 +105,14 @@ export function slug(name) {
 }
 
 /**
- * `humanizeSection(name)` — the **single** folder-name → display-title rule
- * (hoisted from `sections.ts`, gherkin-feature-pages review #7): split on runs of
- * `-`, `_`, `/` and whitespace, drop empty words, upper-case each word's first
- * character, join with one space (`shipping-ops` → `Shipping Ops`). The registry
- * sidebar titles an unregistered section group with it, and the Gherkin generator
- * titles its directory hubs with it, so a generated hub and its sidebar group
- * always agree. Pure and locale-free (`toUpperCase` of one character).
+ * `humanizeSection(name)` — the TOP-LEVEL folder-name → display-title rule
+ * (hoisted from `sections.ts`): split on runs of `-`, `_`, `/` and whitespace,
+ * drop empty words, upper-case each word's first character, join with one space
+ * (`shipping-ops` → `Shipping Ops`). The registry sidebar titles an unregistered
+ * top-level section group with it, and the Gherkin generator uses it for the
+ * section's own root hub. NESTED directories use {@link humaniseDirectoryName}
+ * (sentence case), as the sidebar does. Pure and locale-free (`toUpperCase` of
+ * one character).
  *
  * @param {string} name
  * @returns {string}
@@ -122,6 +123,21 @@ export function humanizeSection(name) {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+/**
+ * `humaniseDirectoryName(name)` — the NESTED folder-name → display-title rule
+ * the sidebar shaping uses (`route-shaping.ts` re-exports it): split on runs of
+ * `-`, `_` and whitespace, join with one space, upper-case only the first
+ * character (`book-one` → `Book one`). The Gherkin generator titles its nested
+ * directory hubs with it so a hub and its sidebar group agree.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function humaniseDirectoryName(name) {
+  const words = name.split(/[-_\s]+/).filter(Boolean).join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 // ---------------------------------------------------------------------------

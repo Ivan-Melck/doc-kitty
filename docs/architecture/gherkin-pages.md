@@ -128,9 +128,10 @@ other.
 The root hub's title is the section's label in the section registry, or the
 humanised section id. A directory hub's title is the humanised directory name, and
 its description reads "Behaviour specifications for `<Title>`, generated from
-Gherkin feature files." Humanising uses the sidebar's rule (`humanizeSection` in
-`vocabulary-core.mjs`, Title Case per word: `shipping-ops` becomes "Shipping Ops"),
-so a hub and its sidebar group agree. A directory name is literal text: in the
+Gherkin feature files." A nested directory is humanised with the sidebar's rule
+(`humaniseDirectoryName` in `vocabulary-core.mjs`, sentence case: `shipping-ops`
+becomes "Shipping ops"), so a hub and its sidebar group agree. Only the root hub's
+fallback title, from the section id, is Title Case. A directory name is literal text: in the
 parent hub's list line and in the hub's `#` heading it is escaped like a step, so
 a folder called `<b>x` or `[x](y)` can't inject HTML or a link. The hub
 frontmatter keeps the name as a quoted string.

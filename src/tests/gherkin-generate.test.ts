@@ -876,7 +876,7 @@ describe('hub text is escaped and titles match the sidebar (review #7)', () => {
   it.each(['<b>x<i>', '[x](evil)', 'see *this*', 'www.example.com'])(
     'a directory named %j renders as literal text in its parent hub (no html/link/emphasis)',
     async (dir) => {
-      const { humanizeSection } = await import('../lib/vocabulary-core.mjs');
+      const { humaniseDirectoryName } = await import('../lib/vocabulary-core.mjs');
       const site = makeSite({ [`features/${dir}/a.feature`]: feature('Alpha') });
       const out = plan(site).plan;
       const root = out.get('README.md') as string;
@@ -894,7 +894,7 @@ describe('hub text is escaped and titles match the sidebar (review #7)', () => {
       // The visible list-item text carries the raw (humanised) name twice: title + description.
       const list = tree.children?.find((n) => n.type === 'list') as MdNode;
       const text = mdText(list);
-      expect(text.split(humanizeSection(dir)).length - 1).toBe(2);
+      expect(text.split(humaniseDirectoryName(dir)).length - 1).toBe(2);
     },
   );
 
@@ -925,12 +925,12 @@ describe('hub text is escaped and titles match the sidebar (review #7)', () => {
     expect(mdText(h1)).toBe('A #');
   });
 
-  it('directory titles use the sidebar rule (Title Case per word)', async () => {
-    const { humanizeSection } = await import('../lib/vocabulary-core.mjs');
+  it('nested directory titles use the sidebar rule (sentence case)', async () => {
+    const { humaniseDirectoryName } = await import('../lib/route-shaping.js');
     const site = makeSite({ 'features/shipping-ops/x.feature': feature('X marks') });
     const hub = plan(site).plan.get('shipping-ops/README.md') as string;
-    expect(fm(hub).title).toBe('Shipping Ops');
-    expect(fm(hub).title).toBe(humanizeSection('shipping-ops'));
+    expect(fm(hub).title).toBe('Shipping ops');
+    expect(fm(hub).title).toBe(humaniseDirectoryName('shipping-ops'));
   });
 });
 
