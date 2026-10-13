@@ -185,6 +185,11 @@ section). Every directory with at least one published (non-draft) feature below
 it gets a generated hub page. A directory holding only `@wip` or
 `@dk:status=draft` features gets no hub, and its parent hub doesn't link it.
 
+A feature's description is Markdown passthrough, so raw HTML in a description
+lands on the page, on its hub entry and in the page's `description`. Names, steps
+and table cells are escaped. Take `.feature` files only from sources you trust as
+much as your docs.
+
 Don't edit or add files under the generated section. Changes are overwritten on
 the next run, and any file in that folder without the generator's
 `generated.by` stamp fails the build, and so does a symlink. Some names fail

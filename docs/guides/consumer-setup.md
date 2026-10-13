@@ -264,7 +264,9 @@ export const GET = bibliographyRoute();
 ```
 
 If you turn on Gherkin feature pages (the `gherkin` option), also mount the
-scenario index. Pass it the same `sourceRoot` and `sourceUrlPrefix` you gave
+scenario index. This is required: the integration does not add the route, and
+`llms.txt` advertises `/api/scenarios.json` whenever a generated feature page
+exists, so without the route it links to a page that does not exist. Pass it the same `sourceRoot` and `sourceUrlPrefix` you gave
 `gherkin` (omit both when you use the defaults), so it can find each page's
 `.feature` source:
 

@@ -64,7 +64,7 @@ The four modules are plain JSDoc-typed `.mjs` with no Astro imports:
 | `feature-core.mjs` | Pure tag and description mapping to ordered frontmatter. Returns warnings; never throws on author input. | `vocabulary-core.mjs`, `text.mjs` |
 | `render.mjs` | Pure AST to Markdown body, including escaping. | `vocabulary-core.mjs`, `text.mjs` |
 | `generate.mjs` | `planFeaturePages()` builds the path-to-contents map. `generateFeaturePages()` writes it. `diffFeaturePages()` compares it with the tree for `--check`. | `node:*`, `gray-matter`, `vocabulary-loader.mjs`, the modules above |
-| `options.mjs` | `validateGherkinOptions()`: the one validator for the `gherkin` option, shared by the integration and the CLI. | `text.mjs` |
+| `options.mjs` | `validateGherkinOptions()` and `validateIndexBasenames()`: the one validator for the `gherkin` option and the index basenames, shared by the integration and the CLI. | `text.mjs` |
 
 `text.mjs` imports nothing. It holds the `[dk-gherkin]` log prefix, the one
 dedent and narrative-split rule, and the one unnamed-feature title fallback, all
@@ -163,7 +163,11 @@ removes pages. It never deletes authored content:
    before any write, naming it. A generated section has a single owner. A symlink
    is always authored, even one pointing at a stamped page: it is never followed,
    so the writer can't write or prune outside the section through it. A file whose
-   frontmatter doesn't parse is also authored, which is the safe default.
+   frontmatter doesn't parse is also authored, which is the safe default. The same
+   rule covers the section folder itself: a symlinked `<docsDir>/<section>` stops
+   the run. Ownership is by stamp only: a hand-written page that carries
+   `generated.by: doc-kitty/gherkin` counts as generated, and is pruned when no
+   feature maps to it.
 3. It writes the planned files whose bytes changed, deletes owned files that are no
    longer planned, then removes directories left empty.
 4. With the preset on and no `.feature` files left, it warns once, naming the
@@ -377,9 +381,17 @@ feature carries `@dk:updated=<date>`, so by default:
   prunes the section, so the last generated pages keep building as ordinary
   content. Removing the feature means deleting the section folder. If CI still runs
   the `--check` gate, it reports the drift.
-- **A symlinked section folder.** Symlinks inside the section are refused, but the
-  section folder itself (`<docsDir>/<section>`) is used as found. If it is a
-  symlink, generation writes through it.
+- **Feature descriptions are a trust boundary.** A description is Markdown
+  passthrough, so raw HTML in one lands on the page, on the hub and in the page's
+  `description`. Names, steps and table cells are escaped. Pull `.feature` files
+  only from sources you trust as much as your docs.
+- **Only Feature-level tags gate publication.** A `@wip` on a single Scenario does
+  not hide it; the tag is shown on the page.
+- **A directory holding only draft features gets no hub.** With drafts built (the
+  default), the sidebar warns "Add an index page to …" for it. The author cannot
+  act on that, because an authored file in the generated section stops the build.
+  It goes away once one feature in the directory is published, or with
+  `DK_PUBLISH_DRAFTS=off`.
 - **The scenario index is a separate mount.** `llms.txt` advertises
   `/api/scenarios.json` whenever at least one published, agent-discoverable
   generated feature page exists, but the integration doesn't inject the route, so
