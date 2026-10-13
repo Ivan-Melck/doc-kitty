@@ -399,6 +399,31 @@ async function assertBibliography(distDir) {
   ok(`api/bibliography.json: valid JSON, records[] (${body.records.length}) each with id/title/url`);
 }
 
+// The scenario index (gherkin-feature-pages WP10) on a consumer WITHOUT Gherkin
+// pages: the route still mounts and builds (an empty `features[]`), and llms.txt
+// does NOT advertise it — the no-gherkin llms.txt stays byte-identical.
+async function assertScenarioIndex(distDir) {
+  const abs = path.join(distDir, 'api', 'scenarios.json');
+  const text = await readNonEmptyText(abs, 'api/scenarios.json');
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch (err) {
+    fail(`api/scenarios.json: not valid JSON (${err.message})`);
+  }
+  if (body === null || typeof body !== 'object' || !Array.isArray(body.features)) {
+    fail('api/scenarios.json: top-level `features` is not an array');
+  }
+  if (body.features.length !== 0 || body.count !== 0) {
+    fail(`api/scenarios.json: the fixture has no Gherkin pages, expected 0 features (got ${body.features.length})`);
+  }
+  const llms = await readNonEmptyText(path.join(distDir, 'llms.txt'), 'llms.txt');
+  if (llms.includes('Scenario index:')) {
+    fail('llms.txt: advertises the scenario index on a site with no Gherkin feature pages');
+  }
+  ok('api/scenarios.json: valid JSON, empty features[]; llms.txt does not advertise it');
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -427,6 +452,7 @@ async function main() {
   // T019 — favicon + bibliography
   await assertFavicon(distDir);
   await assertBibliography(distDir);
+  await assertScenarioIndex(distDir);
 
   ok('all consumer artifact assertions passed');
 }

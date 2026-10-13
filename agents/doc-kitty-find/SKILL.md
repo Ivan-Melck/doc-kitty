@@ -39,5 +39,8 @@ exist yet and say where it should live.
   `@dk:mission=<slug>` and `@dk:adr=<n>` become `related` refs, so filter on
   a page's `related` metadata to find the specs for a mission or decision.
 - When the site also mounts `scenarioIndexRoute`, `GET /api/scenarios.json` lists
-  every feature, rule and scenario with anchors, tags, steps and related refs.
-  Query it for "which scenarios cover X" instead of scraping the pages.
+  every published feature page (`id`, `url`, `source`, `tags`, `related`) and
+  each of its scenarios: `rule`, `anchor` (append `#<anchor>` to the page `url`),
+  source `line`, own `tags`, `outline`, `steps` and outline `examples`. Query it
+  for "which scenarios cover X" instead of scraping the pages. `llms.txt` carries
+  a `Scenario index:` line when it exists. Drafts are not listed.

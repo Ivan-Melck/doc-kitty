@@ -263,6 +263,17 @@ import { bibliographyRoute } from '@spec-kitty/doc-toolkit/routes';
 export const GET = bibliographyRoute();
 ```
 
+If you turn on Gherkin feature pages (the `gherkin` option), also mount the
+scenario index. Pass it the same `sourceRoot` and `sourceUrlPrefix` you gave
+`gherkin` (omit both when you use the defaults), so it can find each page's
+`.feature` source:
+
+```ts
+// src/pages/api/scenarios.json.ts
+import { scenarioIndexRoute } from '@spec-kitty/doc-toolkit/routes';
+export const GET = scenarioIndexRoute();
+```
+
 If you publish reveal.js slide decks (`kind: Presentation` pages under
 `presentations/`), add the out-of-frame deck route. It wires the deck layout and
 slug helper from their published entry points:
