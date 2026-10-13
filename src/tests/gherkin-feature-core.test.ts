@@ -204,14 +204,24 @@ describe('§2 metadata tags — one case per contract row', () => {
 
 describe('§2 status precedence', () => {
   it.each([
-    [['@dk:status=review', '@wip'], 'review'],
-    [['@deprecated', '@dk:status=active'], 'active'],
-    [['@wip', '@deprecated'], 'draft'],
-    [['@deprecated', '@wip'], 'draft'],
-    [['@deprecated'], 'deprecated'],
-    [[], 'active'],
-  ])('%j → %s', (tags, status) => {
-    expect(parseMetadataTags(tagsOf(...tags), {}).meta.status).toBe(status);
+    [['@dk:status=review', '@wip'], 'review', false],
+    [['@deprecated', '@dk:status=active'], 'active', false],
+    [['@wip', '@deprecated'], 'draft', false],
+    [['@deprecated', '@wip'], 'draft', false],
+    [['@deprecated'], 'deprecated', false],
+    [[], 'active', false],
+    // Fail closed: a status tag that cannot be honoured never publishes the page.
+    [['@dk:status=Draft'], 'draft', true],
+    [['@dk:Status=draft'], 'draft', true],
+    [['@dk:status='], 'draft', true],
+    [['@dk:status=active', '@dk:status=draft'], 'draft', true],
+    [['@dk:status=draft', '@dk:status=active'], 'draft', true],
+    // An unknown but well-formed status is a custom status, not an error.
+    [['@dk:status=drfat'], 'drfat', false],
+  ])('%j → %s', (tags, status, treatedAsDraft) => {
+    const { meta, warnings } = parseMetadataTags(tagsOf(...tags), {});
+    expect(meta.status).toBe(status);
+    expect(warnings.some((w) => /treated as a draft/.test(w))).toBe(treatedAsDraft);
   });
 
   it('@wip / @deprecated are consumed, not page tags', () => {
@@ -577,12 +587,12 @@ describe('@dk:status values are validated and doc_status always serialises to a 
   // authored and refuse to write — a permanent lockout.
   const BAD = ['!x', '[x]', 'foo:', '*a', 'null', 'true', '1e3', 'Active', '-x', 'a b'];
 
-  it.each(BAD)('@dk:status=%s is ignored with a warning (falls back to the shorthand/default)', (value) => {
+  it.each(BAD)('@dk:status=%s is rejected with a warning and the page is treated as a draft', (value) => {
     const plain = parseMetadataTags(tagsOf(`@dk:status=${value}`), { file: FILE });
-    expect(plain.meta.status).toBe('active');
+    expect(plain.meta.status).toBe('draft');
     expect(plain.warnings).toHaveLength(1);
     expect(plain.warnings[0]).toMatch(/^\[dk-gherkin\] features\/x\.feature:1:1 invalid @dk:status=/);
-    expect(plain.warnings[0]).toContain('ignored');
+    expect(plain.warnings[0]).toContain('treated as a draft');
     expect(parseMetadataTags(tagsOf(`@dk:status=${value}`, '@wip'), {}).meta.status).toBe('draft');
   });
 
@@ -592,7 +602,7 @@ describe('@dk:status values are validated and doc_status always serialises to a 
     ['In-Review', 'in-review'],
   ])('@dk:status=%s rejected only for its case suggests @dk:status=%s', (value, lower) => {
     const { meta, warnings } = parseMetadataTags(tagsOf(`@dk:status=${value}`), { file: FILE });
-    expect(meta.status).toBe('active');
+    expect(meta.status).toBe('draft');
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain(`invalid @dk:status=${value}`);
     expect(warnings[0]).toContain(`did you mean @dk:status=${lower}?`);

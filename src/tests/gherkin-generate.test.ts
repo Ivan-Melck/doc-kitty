@@ -768,7 +768,7 @@ describe('a page is never written that the next run would refuse to own (review 
       const first = gen(site);
       expect(first.warnings.some((w) => w.includes(`invalid @dk:status=${value}`))).toBe(true);
       const page = readFileSync(path.join(site.outDir, 'shipping/book.md'), 'utf8');
-      expect(fm(page).doc_status).toBe('active');
+      expect(fm(page).doc_status).toBe('draft');
       // Second run: before the fix this threw "refusing to write … book.md is not generated".
       expect(() => gen(site)).not.toThrow();
       expect(scanOutputDir(site.outDir).authored).toEqual([]);

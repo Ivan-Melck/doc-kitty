@@ -219,7 +219,7 @@ Feature: Book a consignment
 | Tag | Becomes | Notes |
 |-----|---------|-------|
 | `@dk:context=<ctx>` | `glossary_context` | The glossary context used to resolve terms in the step text. At most one. |
-| `@dk:status=<s>` | `doc_status` | Wins over `@wip` and `@deprecated`. The value must be a lower-case slug such as `active` or `in-review`; anything else is ignored with a warning. A non-canonical slug passes through, and the frontmatter gate warns about it. |
+| `@dk:status=<s>` | `doc_status` | Wins over `@wip` and `@deprecated`. The value must be a lower-case slug such as `active` or `in-review`; anything else warns and makes the page a draft, as do two `@dk:status` tags that disagree. A non-canonical slug passes through, and the frontmatter gate warns about it. |
 | `@wip` | `doc_status: draft` | Draft pages are left out of the sitemap, feeds and agent API. |
 | `@deprecated` | `doc_status: deprecated` | |
 | *(none)* | `doc_status: active` | A committed feature is live behaviour. |

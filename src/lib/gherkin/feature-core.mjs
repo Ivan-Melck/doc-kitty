@@ -258,6 +258,10 @@ export function parseMetadataTags(tags, { file } = {}) {
   const related = [];
   let wip = false;
   let deprecated = false;
+  // A `@dk:status` that cannot be honoured (malformed, valueless, mis-cased key,
+  // or two tags that disagree) fails CLOSED: the page is a draft, never live.
+  let statusFailedClosed = false;
+  const DRAFT_NOTE = 'the page is treated as a draft';
 
   for (const tag of tags ?? []) {
     const raw = typeof tag?.name === 'string' ? tag.name : '';
@@ -277,6 +281,11 @@ export function parseMetadataTags(tags, { file } = {}) {
     const key = eq === -1 ? body : body.slice(0, eq);
     const value = eq === -1 ? undefined : body.slice(eq + 1);
 
+    if (key !== 'status' && key.toLowerCase() === 'status') {
+      statusFailedClosed = true;
+      warnings.push(`${PREFIX} ${loc} unknown metadata tag ${name} (did you mean @dk:status?); ${DRAFT_NOTE}`);
+      continue;
+    }
     if (!(/** @type {readonly string[]} */ (METADATA_KEYS).includes(key))) {
       const hint = suggestKey(key);
       warnings.push(
@@ -285,12 +294,23 @@ export function parseMetadataTags(tags, { file } = {}) {
       continue;
     }
     if (value === undefined || value === '') {
-      warnings.push(`${PREFIX} ${loc} metadata tag ${name} has no value (expected @dk:${key}=<value>); ignored`);
+      if (key === 'status') statusFailedClosed = true;
+      warnings.push(
+        `${PREFIX} ${loc} metadata tag ${name} has no value (expected @dk:${key}=<value>); ignored` +
+          (key === 'status' ? `; ${DRAFT_NOTE}` : ''),
+      );
       continue;
     }
 
     if (SINGLE_VALUED.has(key)) {
       if (single.has(key)) {
+        if (key === 'status' && single.get(key) !== value) {
+          statusFailedClosed = true;
+          warnings.push(
+            `${PREFIX} ${loc} conflicting @dk:status tags (${single.get(key)} and ${value}); ${DRAFT_NOTE}`,
+          );
+          continue;
+        }
         warnings.push(
           `${PREFIX} ${loc} multiple @dk:${key} tags; keeping the first (${single.get(key)}), ignoring ${value}`,
         );
@@ -300,9 +320,10 @@ export function parseMetadataTags(tags, { file } = {}) {
         // Rejected ONLY for its case (`Draft`): name the value that would pass.
         const lower = value.toLowerCase();
         const hint = isStatusSlug(lower) ? `; did you mean @dk:status=${lower}?` : '';
+        statusFailedClosed = true;
         warnings.push(
           `${PREFIX} ${loc} invalid @dk:status=${value} (expected a lower-case slug such as ` +
-            `active, draft or in-review); ignored${hint}`,
+            `active, draft or in-review); ignored${hint}; ${DRAFT_NOTE}`,
         );
         continue;
       }
@@ -332,7 +353,9 @@ export function parseMetadataTags(tags, { file } = {}) {
     else if (key === 'related') related.push(value);
   }
 
-  const status = single.get('status') ?? (wip ? 'draft' : deprecated ? 'deprecated' : 'active');
+  const status = statusFailedClosed
+    ? 'draft'
+    : (single.get('status') ?? (wip ? 'draft' : deprecated ? 'deprecated' : 'active'));
 
   /** @type {FeatureMeta} */
   const meta = { status, personas, missions, adrs, related };
