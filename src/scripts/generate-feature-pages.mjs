@@ -48,7 +48,11 @@ import {
   generateFeaturePages,
   planFeaturePages,
 } from '../lib/gherkin/generate.mjs';
-import { DEFAULT_GHERKIN_SECTION, validateGherkinOptions } from '../lib/gherkin/options.mjs';
+import {
+  DEFAULT_GHERKIN_SECTION,
+  validateGherkinOptions,
+  validateIndexBasenames,
+} from '../lib/gherkin/options.mjs';
 
 /** The diff kinds, in the order they are reported. */
 const DRIFT_KINDS = /** @type {const} */ (['added', 'changed', 'stale', 'authored']);
@@ -130,6 +134,8 @@ export function parseArgs(argv) {
     },
     { optionName: (key) => FLAG[key] },
   );
+
+  validateIndexBasenames(list(raw.indexBasename), '--index-basename');
 
   const root = path.resolve(raw.root);
   const docsRoot = path.resolve(root, raw.docs);

@@ -43,10 +43,12 @@
 import { createHash } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   rmdirSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -397,6 +399,9 @@ export function scanOutputDir(outDir) {
   /** @type {string[]} */
   const authored = [];
   if (!existsSync(outDir)) return { owned, authored };
+  // The section root itself a symlink: every write and prune would land in its
+  // target. Same rule as an inner symlink — authored, never followed.
+  if (lstatSync(outDir).isSymbolicLink()) return { owned, authored: ['.'] };
   /** @param {string} dir */
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -450,11 +455,43 @@ export function diffFeaturePages(plan, outDir) {
   const changed = [];
   for (const [rel, contents] of plan) {
     const abs = path.join(outDir, rel);
+    assertNotDirectory(outDir, rel);
     if (!existsSync(abs)) added.push(rel);
     else if (readFileSync(abs, 'utf8') !== contents) changed.push(rel);
   }
   const stale = owned.filter((rel) => !plan.has(rel));
   return { added, changed, stale, authored };
+}
+
+/**
+ * Throw unless `rel` resolves to a path under `outDir`.
+ *
+ * @param {string} outDir
+ * @param {string} rel
+ */
+function assertInside(outDir, rel) {
+  const root = path.resolve(outDir);
+  const abs = path.resolve(root, rel);
+  if (abs !== root && !abs.startsWith(root + path.sep)) {
+    throw new Error(`${PREFIX} refusing to write ${rel}: it resolves outside ${outDir}`);
+  }
+}
+
+/**
+ * Throw a readable error when a directory sits where a page must be written
+ * (`ship.md/` beside `ship.feature`).
+ *
+ * @param {string} outDir
+ * @param {string} rel
+ */
+function assertNotDirectory(outDir, rel) {
+  const abs = path.join(outDir, rel);
+  if (existsSync(abs) && statSync(abs).isDirectory()) {
+    throw new Error(
+      `${PREFIX} cannot write ${rel}: ${abs} is a directory (a generated page needs that file name; ` +
+        'rename or remove the directory)',
+    );
+  }
 }
 
 /**
@@ -472,6 +509,12 @@ export function generateFeaturePages(model, opts) {
   const { outDir, sources, warn = () => {} } = opts;
   const plan = planFeaturePages(model, opts);
   const { owned, authored } = scanOutputDir(outDir);
+  if (existsSync(outDir) && lstatSync(outDir).isSymbolicLink()) {
+    throw new Error(
+      `${PREFIX} refusing to write into ${outDir}: the section directory is a symlink ` +
+        '(pages would be written and pruned in its target; make it a real directory)',
+    );
+  }
   if (authored.length > 0) {
     throw new Error(
       `${PREFIX} refusing to write into ${outDir}: ${authored.join(', ')} ` +
@@ -486,6 +529,11 @@ export function generateFeaturePages(model, opts) {
       `${PREFIX} no .feature files found${where}; ${owned.length} previously generated page(s) will be removed`,
     );
   }
+
+  // Defence in depth: nothing planned or pruned may resolve outside `outDir`.
+  const removed = owned.filter((rel) => !plan.has(rel));
+  for (const rel of [...plan.keys(), ...removed]) assertInside(outDir, rel);
+  for (const rel of plan.keys()) assertNotDirectory(outDir, rel);
 
   /** @type {string[]} */
   const written = [];
@@ -502,7 +550,6 @@ export function generateFeaturePages(model, opts) {
     written.push(rel);
   }
 
-  const removed = owned.filter((rel) => !plan.has(rel));
   for (const rel of removed) unlinkSync(path.join(outDir, rel));
   if (removed.length > 0) pruneEmptyDirs(outDir);
 
