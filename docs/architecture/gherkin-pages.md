@@ -199,7 +199,7 @@ metadata channel. The value is everything after the first `=`.
 | Tag | Frontmatter |
 |-----|-------------|
 | `@dk:context=<ctx>` | `glossary_context` |
-| `@dk:status=<s>` | `doc_status`, when `<s>` is a lower-case slug |
+| `@dk:status=<s>` | `doc_status`, when `<s>` is a lower-case slug; a rejected or conflicting status gives `draft` |
 | `@wip` / `@deprecated` | `doc_status: draft` / `deprecated`, when no `@dk:status` |
 | none of the above | `doc_status: active` |
 | `@dk:persona=<slug>` | an `audience` entry; `guidance_text` is the feature's narrative |
@@ -217,15 +217,20 @@ points that matter for maintainers:
 
 - **Warnings, not failures.** An unknown `@dk:` key (with a did-you-mean
   suggestion), a missing value, a repeated single-valued key (the first wins), or
-  an invalid `status`, `updated`, `priority` or `autolink` value warns and is
-  ignored. A dangling persona, mission, ADR or related ref fails through the
+  an invalid `updated`, `priority` or `autolink` value warns and is ignored. The
+  exception is `status`, which fails closed (see below). A dangling persona, mission, ADR or related ref fails through the
   existing link and audience gates, not here.
 - **Status values.** A `@dk:status` value must match `^[a-z][a-z0-9-]*$` and not
   be a YAML keyword such as `null` or `true`. A value rejected only for its case
   (`Draft`) gets a did-you-mean hint with the lower-case form. That still admits charter-defined
   statuses like `in-review`, which pass through and get the frontmatter gate's
-  usual warning. Any other value (`!x`, `[x]`, `foo:`, `*a`, `1e3`) is ignored with
-  a warning, and the status falls back to `@wip`/`@deprecated` or `active`. As a
+  usual warning. A `@dk:status` the generator cannot honour makes the page a
+  **draft**, with a warning that says so, so a page meant to stay hidden never
+  ships on a live build. That covers a malformed value (`Draft`, `!x`, `[x]`,
+  `foo:`, `*a`, `1e3`), a tag with no value, a mis-cased key (`@dk:Status`), and
+  two `@dk:status` tags that disagree. A well-formed value the vocabulary does not
+  list (`drfat`) is a custom status, not an error. `@wip` and `@deprecated` match
+  case-sensitively, as before. As a
   second line of defence the serialiser quotes any `doc_status` that isn't such a
   slug, so the frontmatter always parses.
 - **Section registry.** The generator resolves the registry the way the build
