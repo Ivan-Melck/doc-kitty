@@ -260,7 +260,7 @@ export function planFeaturePages(model, opts) {
     }
     claimedBy.set(out, sourceLabel);
 
-    const { fields, warnings } = buildFrontmatter({
+    const { fields, warnings, descriptionIsName } = buildFrontmatter({
       featureName: feature.name,
       featureKeyword: feature.keyword,
       description: feature.description,
@@ -294,7 +294,9 @@ export function planFeaturePages(model, opts) {
         title: fields.title,
         // The Feature description's first sentence: Markdown passthrough, the
         // same trust boundary as the page body it was taken from (contract §4).
-        body: fields.description,
+        // The no-description fallback is built from the Feature NAME instead —
+        // literal text, so it is escaped here.
+        body: descriptionIsName ? escapeInline(fields.description) : fields.description,
         href: `./${slugged[slugged.length - 1]}/`,
       });
     }

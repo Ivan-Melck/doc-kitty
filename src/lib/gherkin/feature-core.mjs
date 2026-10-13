@@ -431,13 +431,16 @@ export function truncateDescription(text) {
  * @param {string | undefined} description The Feature description as the parser returns it.
  * @param {{ file?: string, location?: { line?: number, column?: number } }} [options]
  *   `file` (and optionally the Feature's `location`) names the source in warnings.
- * @returns {{ description: string, warnings: string[] }}
+ * @returns {{ description: string, warnings: string[], usedNameFallback?: true }}
+ *   `usedNameFallback` is set (only then) when step 6 ran: the text is built from
+ *   the Feature NAME, which is literal text, not authored Markdown.
  */
 export function deriveDescription(featureName, description, { file, location } = {}) {
   /** @type {string[]} */
   const warnings = [];
   const loc = where(file, location);
   const { rest } = splitNarrative(description);
+  let usedNameFallback = false;
 
   let candidate;
   if (rest.trim() !== '') {
@@ -448,6 +451,7 @@ export function deriveDescription(featureName, description, { file, location } =
   if (candidate === undefined || candidate === '') {
     candidate = `Behaviour specification for ${String(featureName ?? '').replace(/\s+/g, ' ').trim()}.`;
     warnings.push(`${PREFIX} ${loc} Feature has no description; using "${candidate}"`);
+    usedNameFallback = true;
   }
 
   const { text, truncated } = truncateDescription(candidate);
@@ -456,7 +460,7 @@ export function deriveDescription(featureName, description, { file, location } =
       `${PREFIX} ${loc} description is ${candidate.length} chars; truncated to ${text.length} (max ${DESCRIPTION_MAX})`,
     );
   }
-  return { description: text, warnings };
+  return { description: text, warnings, ...(usedNameFallback ? { usedNameFallback: true } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -564,7 +568,9 @@ export function missionPrefix(registry) {
  *   Its warning is reported only when the feature has an `@dk:mission` tag.
  * @param {ReadonlyArray<string>} [input.adrFileNames] Basenames under `<docsRoot>/adr/`.
  * @param {{ line?: number, column?: number }} [input.location] The Feature's location (warnings).
- * @returns {{ fields: FeatureFrontmatter, warnings: string[] }}
+ * @returns {{ fields: FeatureFrontmatter, warnings: string[], descriptionIsName?: true }}
+ *   `descriptionIsName` (only when set): `fields.description` is built from the
+ *   Feature name, so a Markdown context must escape it.
  */
 export function buildFrontmatter({
   featureName,
@@ -621,7 +627,7 @@ export function buildFrontmatter({
   if (meta.autolink === false) fields.glossary_autolink = false;
   if (meta.priority !== undefined) fields.agent = { priority: meta.priority };
 
-  return { fields, warnings };
+  return { fields, warnings, ...(derived.usedNameFallback ? { descriptionIsName: true } : {}) };
 }
 
 /** YAML-safe double-quoted scalar — the glossary generator's `yamlString`. */
