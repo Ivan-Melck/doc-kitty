@@ -184,7 +184,10 @@ comparison, never locale or filesystem order. No clock is read.
 `generated.at` holds a content hash, not a timestamp: `sha256:<first 12 hex>` of
 the raw source bytes for a feature page, and of the sorted child-path list for a
 hub. An agent can tell which version of the source a page reflects, and unchanged
-input gives byte-identical output.
+input gives byte-identical output. Because the hash covers the raw bytes, a
+checkout that converts line endings (Windows `autocrlf`) changes the hash and
+`--check` reports drift. This repository pins `*.feature text eol=lf` in
+`.gitattributes`; a consumer repository should add the same line.
 
 The writer skips files whose bytes are unchanged. That matters in dev. Each loaded
 `.feature` is registered with `addWatchFile`, so editing one restarts the dev
