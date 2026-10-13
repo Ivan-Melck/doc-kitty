@@ -13,6 +13,28 @@
  */
 
 /**
+ * THE prefix on every warning/error line the Gherkin pipeline emits (contract
+ * §7). Defined once, here in the import-free module, so every `gherkin/*`
+ * module (and `config.ts`, via `load.mjs`'s re-export) shares it.
+ */
+export const GHERKIN_LOG_PREFIX = '[dk-gherkin]';
+
+/**
+ * The display title of a Feature: its trimmed name, or — for an unnamed
+ * `Feature:` — its trimmed keyword as written (`Feature`, `Functionaliteit`, …),
+ * or `Feature` when even that is missing. The ONE fallback shared by the page
+ * `title`/`description` (`feature-core.mjs`) and the body H1 (`render.mjs`), so
+ * the hub link, the frontmatter and the heading never disagree.
+ *
+ * @param {string | undefined} name The Feature name as parsed.
+ * @param {string | undefined} keyword The Feature keyword as parsed.
+ * @returns {string}
+ */
+export function featureTitle(name, keyword) {
+  return String(name ?? '').trim() || String(keyword ?? '').trim() || 'Feature';
+}
+
+/**
  * A line that opens or continues a user-story narrative (English only; the i18n
  * gap is documented in ADR-0046). Case-insensitive, matched after trimming.
  */

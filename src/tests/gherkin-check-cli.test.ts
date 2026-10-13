@@ -242,3 +242,24 @@ describe('generate-feature-pages CLI — --check drift gate', () => {
     expect(res.stderr).toMatch(/--sources is required/);
   });
 });
+
+describe('generate-feature-pages CLI — option validation parity with the integration (review #6)', () => {
+  it.each(['../../escaped', '..', 'a/b', '.hidden', 'a\\b'])('--section %s is rejected (exit 1) and nothing is written', (section) => {
+    const site = makeSite();
+    // A regression would write OUTSIDE the temp site (`<tmp>/escaped`): clean that up too.
+    if (section.startsWith('../../')) sites.push(path.resolve(site, 'docs', section));
+    const res = run(site, '--section', section);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/\[dk-gherkin\] --section must be a single folder name/);
+    expect(existsSync(path.resolve(site, 'docs', section))).toBe(section === '..');
+    expect(existsSync(path.resolve(site, 'docs', section, 'README.md'))).toBe(false);
+  });
+
+  it.each(['glossary', '_meta'])('--section %s is reserved (exit 1)', (section) => {
+    const site = makeSite();
+    const res = run(site, '--section', section);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(new RegExp(`\\[dk-gherkin\\] --section "${section}" is reserved`));
+    expect(existsSync(path.join(site, 'docs', section))).toBe(false);
+  });
+});

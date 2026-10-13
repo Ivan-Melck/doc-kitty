@@ -60,13 +60,17 @@ The four modules are plain JSDoc-typed `.mjs` with no Astro imports:
 
 | Module | Role | Imports |
 |--------|------|---------|
-| `load.mjs` | Discover and parse. Walks each source directory, skipping dot-directories and `node_modules` and following symlinks without revisiting a directory. Parses each file with a fresh `IdGenerator.incrementing()`. Collects **every** syntax error in every file, then throws one `[dk-gherkin] <path>:<line>:<col> <message>` error. A missing source directory is fatal. A file with no `Feature:` is skipped with a warning. | `node:*`, `@cucumber/gherkin`, `@cucumber/messages` |
+| `load.mjs` | Discover and parse. Walks each source directory in code-unit order, skipping dot-directories and `node_modules` and following symlinks without revisiting a directory (so which path reaches a shared directory first never depends on filesystem order). Parses each file with a fresh `IdGenerator.incrementing()`. Collects **every** syntax error in every file, then throws one `[dk-gherkin] <path>:<line>:<col> <message>` error. A missing source directory is fatal. A file with no `Feature:` is skipped with a warning. | `node:*`, `@cucumber/gherkin`, `@cucumber/messages`, `vocabulary-core.mjs`, `text.mjs` |
 | `feature-core.mjs` | Pure tag and description mapping to ordered frontmatter. Returns warnings; never throws on author input. | `vocabulary-core.mjs`, `text.mjs` |
-| `render.mjs` | Pure AST to Markdown body, including escaping. | `text.mjs` |
-| `generate.mjs` | `planFeaturePages()` builds the path-to-contents map. `generateFeaturePages()` writes it. `diffFeaturePages()` compares it with the tree for `--check`. | `node:*`, `gray-matter`, the modules above |
+| `render.mjs` | Pure AST to Markdown body, including escaping. | `vocabulary-core.mjs`, `text.mjs` |
+| `generate.mjs` | `planFeaturePages()` builds the path-to-contents map. `generateFeaturePages()` writes it. `diffFeaturePages()` compares it with the tree for `--check`. | `node:*`, `gray-matter`, `vocabulary-loader.mjs`, the modules above |
+| `options.mjs` | `validateGherkinOptions()`: the one validator for the `gherkin` option, shared by the integration and the CLI. | `text.mjs` |
 
-`text.mjs` holds the one dedent and narrative-split rule that both the metadata
-core and the renderer use.
+`text.mjs` imports nothing. It holds the `[dk-gherkin]` log prefix, the one
+dedent and narrative-split rule, and the one unnamed-feature title fallback, all
+shared by the metadata core and the renderer. Orderings use `compareCodeUnit` and
+path slugs use `slug()`, both from `vocabulary-core.mjs`; no module carries its
+own copy.
 
 ## The generation seam
 
@@ -85,7 +89,9 @@ glossary integration and before Starlight, so the log reads glossary, then
 gherkin. Its section id is appended to the registry sidebar's build-generated ids,
 so a first build with no committed output doesn't warn about a missing section.
 
-The option is validated when `defineDocKittyIntegrations` runs, before any hook:
+The option is validated when `defineDocKittyIntegrations` runs, before any hook,
+by `validateGherkinOptions()` in `options.mjs`. The generator script runs the same
+function on its flags, so `--section ../../x` fails there too:
 
 - `sources` must be a non-empty array of non-empty strings.
 - `section` must be a single path segment: not empty, no `/` or `\`, no leading
@@ -101,12 +107,27 @@ is generated under the same section root.
 Hubs are written for the section root and for every directory that holds a
 feature anywhere below it. The hub file is `<first indexBasename>.md`, so
 `README.md` by default. Using the first configured basename makes the hub collapse
-to its directory route under either loader setting. A hub has `kind: Hub`,
-`doc_status: active`, a one-line intro and a list of its children
-(`- [<title>](./<slug>/) — <description>`), sorted by output path. The root hub's
-title is the section's registry label, or the humanised section id. A directory
-hub's title is the humanised directory name, and its description reads
-"Behaviour specifications for `<Title>`, generated from Gherkin feature files."
+to its directory route under either loader setting. The basename list and the
+index-name test come from `vocabulary-core.mjs` (`normalizeIndexBasenames`,
+`isIndexPath`), the same rule the loader and the frontmatter gate use. A hub has
+`kind: Hub`, `doc_status: active`, a one-line intro and a list of its children
+(`- [<title>](./<slug>/) — <description>`), sorted by output path.
+
+A hub lists sub-directory hubs and every feature that isn't a draft. A draft
+feature (`@wip` or `@dk:status=draft`) still gets its page, but its hub leaves it
+out. The hub layout's own child listing already drops drafts, and the hub's raw
+Markdown is served to agents through `/api/pages/<hub>.json`, so a listed draft
+would get past draft gating.
+
+The root hub's title is the section's label in the section registry, or the
+humanised section id. A directory hub's title is the humanised directory name, and
+its description reads "Behaviour specifications for `<Title>`, generated from
+Gherkin feature files." Humanising uses the sidebar's rule (`humanizeSection` in
+`vocabulary-core.mjs`, Title Case per word: `shipping-ops` becomes "Shipping Ops"),
+so a hub and its sidebar group agree. A directory name is literal text: in the
+parent hub's list line and in the hub's `#` heading it is escaped like a step, so
+a folder called `<b>x` or `[x](y)` can't inject HTML or a link. The hub
+frontmatter keeps the name as a quoted string.
 
 These are fatal, and name the files involved:
 
@@ -114,6 +135,14 @@ These are fatal, and name the files involved:
 - **Index collision.** A feature whose slugged file name is an index basename
   (`README.feature`, or `index.feature` when `indexBasename` includes `index`)
   would be routed as its directory's index and clash with the generated hub.
+- **Route collision.** A feature page and a directory hub on the same route, such
+  as `features/shipping.feature` beside `features/shipping/…`. The page
+  `shipping.md` and the hub `shipping/README.md` both route to
+  `<section>/shipping`, and the loader would silently keep only one. This is
+  fatal in either source order, and the error names both files.
+- **Reserved name.** A feature whose slugged file name is `log` (`log.feature`,
+  `Log.feature`). The docs loader excludes every `log.md` as the reserved change
+  log, so the page would never be built and its hub link would dangle.
 - **Unsluggable path.** A path segment with no slug-able characters.
 
 ## Ownership and pruning
@@ -124,11 +153,20 @@ removes pages. It never deletes authored content:
 1. Every generated page and hub carries `generated.by: "doc-kitty/gherkin"`.
 2. Before writing, the generator scans the section folder. A `.md` with that stamp
    is **owned**. Any other file (dotfiles aside) is **authored**, and the run fails
-   before any write, naming it. A generated section has a single owner.
+   before any write, naming it. A generated section has a single owner. A symlink
+   is always authored, even one pointing at a stamped page: it is never followed,
+   so the writer can't write or prune outside the section through it. A file whose
+   frontmatter doesn't parse is also authored, which is the safe default.
 3. It writes the planned files whose bytes changed, deletes owned files that are no
    longer planned, then removes directories left empty.
-4. With the preset on and no `.feature` files left, it warns once and removes the
-   previously generated pages.
+4. With the preset on and no `.feature` files left, it warns once, naming the
+   source directories, and removes the previously generated pages.
+
+Step 2 would lock a section if the generator ever wrote a page it couldn't read
+back as owned: every later run would refuse to write. Two defences stop that. The
+`doc_status` value is validated (see the mapping contract below), and the planner
+re-parses the frontmatter of every page it plans. If a block doesn't parse, or has
+lost the stamp, planning fails with an internal error before anything is written.
 
 ## Determinism
 
@@ -155,7 +193,7 @@ metadata channel. The value is everything after the first `=`.
 | Tag | Frontmatter |
 |-----|-------------|
 | `@dk:context=<ctx>` | `glossary_context` |
-| `@dk:status=<s>` | `doc_status`, passed through as written |
+| `@dk:status=<s>` | `doc_status`, when `<s>` is a lower-case slug |
 | `@wip` / `@deprecated` | `doc_status: draft` / `deprecated`, when no `@dk:status` |
 | none of the above | `doc_status: active` |
 | `@dk:persona=<slug>` | an `audience` entry; `guidance_text` is the feature's narrative |
@@ -173,12 +211,27 @@ points that matter for maintainers:
 
 - **Warnings, not failures.** An unknown `@dk:` key (with a did-you-mean
   suggestion), a missing value, a repeated single-valued key (the first wins), or
-  an invalid `updated`, `priority` or `autolink` value warns and is ignored. A
-  dangling persona, mission, ADR or related ref fails through the existing link and
-  audience gates, not here.
-- **Mission prefix.** It comes from the section registry: the first section with a
-  `subtypes` rule of `type: Mission` gives `<section>/<match>`, so `plans/missions`
-  in the example. Without one it falls back to `plans` and warns.
+  an invalid `status`, `updated`, `priority` or `autolink` value warns and is
+  ignored. A dangling persona, mission, ADR or related ref fails through the
+  existing link and audience gates, not here.
+- **Status values.** A `@dk:status` value must match `^[a-z][a-z0-9-]*$` and not
+  be a YAML keyword such as `null` or `true`. That still admits charter-defined
+  statuses like `in-review`, which pass through and get the frontmatter gate's
+  usual warning. Any other value (`!x`, `[x]`, `foo:`, `*a`, `1e3`) is ignored with
+  a warning, and the status falls back to `@wip`/`@deprecated` or `active`. As a
+  second line of defence the serialiser quotes any `doc_status` that isn't such a
+  slug, so the frontmatter always parses.
+- **Section registry.** The generator resolves the registry the way the build
+  does (`resolveSectionRegistryEntries` in `vocabulary-loader.mjs`, the bare-Node
+  twin of `resolveSectionRegistry`). A `_meta/charter.yaml` that declares
+  `sections` wins, using its `entries`. Otherwise the legacy `_meta/sections.yaml`
+  applies. The registry supplies the root hub label and the mission prefix.
+- **Mission prefix.** The first section with a `subtypes` rule of `type: Mission`
+  gives `<section>/<match>`, so `plans/missions` in the example. Without one it
+  falls back to `plans` and warns.
+- **Unnamed feature.** A bare `Feature:` line uses its keyword as written
+  (`Feature`, `Functionaliteit`, …) for the title, the `#` heading and the hub
+  entry, and warns `[dk-gherkin] <file>:<line> Feature has no name`.
 - **`type` is not emitted.** The section's registry entry supplies
   `type: Specification`, keeping the type authority in one place.
 - **Description.** The first sentence of the feature description after any leading
@@ -207,6 +260,15 @@ for a lint or parser reason:
 - A name that looks like an ordered-list item (`1. …`) escapes the `.` or `)`, and a
   trailing `#` run in a heading is escaped so it isn't read as a closing sequence.
 - A newline in a table cell renders as `<br>`.
+- GFM autolink literals in literal text (`https://…`, `www.example.com`,
+  `someone@example.com`) would become live links, and markdownlint's MD034 would
+  flag them as bare URLs. A backslash escape doesn't help, because
+  `mdast-util-gfm-autolink-literal` re-scans the decoded text of each text node
+  after parsing. So the escaper splits the text node with an empty HTML comment,
+  `<!---->`, inserted before the `.` of `www.`, the `:` of `http(s)://`, or the `@`
+  of an email address. The comment renders as nothing. Visible text, copy and
+  paste, heading ids and the table of contents are unchanged. It is the only raw
+  HTML the escaper emits, and it does show up in the raw Markdown served to agents.
 
 Duplicate scenario names under one parent produce duplicate sibling headings. The
 generator warns with both line numbers, and markdownlint's MD024 fails CI, so the
@@ -217,10 +279,13 @@ author fixes the name at source.
 The pages are committed, like the glossary's. Two gates keep them honest:
 
 - **Frontmatter parity.** `validate-frontmatter.mjs` recognises a generated page by
-  its `generated.by` stamp (`doc-kitty/glossary` or `doc-kitty/gherkin`), or by the
-  legacy glossary path rule. Generated pages are exempt from `type`, and from
-  `updated` unless a `@dk:updated` tag supplied one, in which case the value is
-  checked normally. `check-links.mjs` needs no change: generated `related` refs are
+  its `generated.by: "doc-kitty/gherkin"` stamp, imported from `feature-core.mjs`
+  rather than repeated, or by the legacy glossary path rule (a `kind: Glossary` or
+  `kind: Hub` page under `glossary/`). The glossary codegen writes no stamp, so a
+  `doc-kitty/glossary` stamp grants no exemption. Accepting one would only let an
+  authored page anywhere opt out of the rules by claiming it. Generated pages are
+  exempt from `type`, and from `updated` unless a `@dk:updated` tag supplied one,
+  in which case the value is checked normally. `check-links.mjs` needs no change: generated `related` refs are
   ordinary slugs, so a dangling one fails like any other.
 - **Drift gate.** `src/scripts/generate-feature-pages.mjs`, shipped as the
   `dockitty-generate-feature-pages` binary, calls the same `loadFeatures` and
@@ -231,6 +296,16 @@ The pages are committed, like the glossary's. Two gates keep them honest:
   `pnpm validate:features` runs it against the example in the CI doc-sanity lane,
   and `pnpm generate:features` regenerates.
 
+## Drafts and the sitemap
+
+A draft feature page is generated like any other page, and the existing draft
+gating keeps it out of the published surfaces. The sitemap's draft filter is the
+one piece that has to account for generation order. It reads the docs tree for
+draft routes lazily, on its first call during the build, not when
+`defineDocKittyIntegrations` runs. By then `astro:config:setup` has regenerated the
+section, so a feature that has just gained `@wip` is excluded on the same build
+rather than one build later.
+
 ## Agent surface
 
 The pages reach `llms.txt` and `/api/index.json` under the section's registry
@@ -238,6 +313,21 @@ label. `/api/pages/<id>.json` returns the generated Markdown plus
 `sources: [{ resource, title: "Gherkin source" }]`. The resource is the source path
 relative to `gherkin.sourceRoot`, prefixed with `gherkin.sourceUrlPrefix` when set,
 so an agent can fetch the executable `.feature` itself.
+
+Sites that mount `scenarioIndexRoute()` at `src/pages/api/scenarios.json.ts` also
+serve `/api/scenarios.json`: `{ version, generated_from: "doc-kitty/gherkin", count,
+features[] }`. It has one record per published, agent-discoverable generated page,
+ordered by id, carrying `id`, `title`, `url`, `source`, `doc_status`,
+`glossary_context`, `tags` and `related`, plus `scenarios[]` in document order.
+Each scenario has `name`, `rule` (`null` outside a rule), `anchor`, `line`, its own
+`tags` (without `@`, sorted), `outline`, `steps` (`{ keyword, text }`, keyword
+trimmed) and `examples` (`{ name, tags, header, rows }`; rows are not expanded).
+The route re-parses each page's `.feature` with the same loader, so pass it the
+`sourceRoot` and `sourceUrlPrefix` you gave `gherkin`. It reads each anchor from the
+page's rendered headings and never computes a slug. A missing source, a source
+changed since generation, or a scenario with no rendered heading fails the build.
+`llms.txt` adds a `Scenario index:` line only when at least one such page exists,
+so a site without Gherkin pages is unaffected.
 
 ## Limits
 
@@ -253,10 +343,13 @@ so an agent can fetch the executable `.feature` itself.
   prunes the section, so the last generated pages keep building as ordinary
   content. Removing the feature means deleting the section folder. If CI still runs
   the `--check` gate, it reports the drift.
-- **Registry source.** The generator reads the section label and the mission
-  subtype from `docs/_meta/sections.yaml`. A registry declared only in
-  `_meta/charter.yaml` isn't consulted there, so the root hub title falls back to
-  the humanised section id and mission refs to `plans/<slug>`.
+- **A symlinked section folder.** Symlinks inside the section are refused, but the
+  section folder itself (`<docsDir>/<section>`) is used as found. If it is a
+  symlink, generation writes through it.
+- **The scenario index is a separate mount.** `llms.txt` advertises
+  `/api/scenarios.json` whenever generated feature pages exist, but the integration
+  doesn't inject the route, so mount `scenarioIndexRoute` when you turn `gherkin` on
+  (every other doc-kitty route is mounted the same way).
 
 ## Related follow-ups
 

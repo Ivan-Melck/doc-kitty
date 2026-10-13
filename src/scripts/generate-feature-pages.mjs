@@ -27,6 +27,11 @@
  * writes (parity by construction). The flags mirror the astro.config option;
  * a separate test keeps the two equal.
  *
+ * Option validation is SHARED with the integration (`../lib/gherkin/options.mjs`
+ * `validateGherkinOptions`): `--section` must be ONE safe folder name, not
+ * `_meta`/`glossary`, so `--section ../../x` is refused here exactly as
+ * `gherkin.section: '../../x'` is refused in astro.config.
+ *
  * `--check` is a lockfile-style gate (cf. `generate-adr-index.mjs --check`): it
  * lists every planned page that is missing (`added`) or differs (`changed`),
  * every owned page no source produces any more (`stale`), and every
@@ -39,16 +44,29 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadFeatures } from '../lib/gherkin/load.mjs';
 import {
-  DEFAULT_GHERKIN_SECTION,
   diffFeaturePages,
   generateFeaturePages,
   planFeaturePages,
 } from '../lib/gherkin/generate.mjs';
+import { DEFAULT_GHERKIN_SECTION, validateGherkinOptions } from '../lib/gherkin/options.mjs';
 
 /** The diff kinds, in the order they are reported. */
 const DRIFT_KINDS = /** @type {const} */ (['added', 'changed', 'stale', 'authored']);
 
-/** Split a comma list, trimming and dropping empties. */
+/** How a shared-validator error names each option: the CLI flag. */
+const FLAG = /** @type {const} */ ({
+  sources: '--sources',
+  section: '--section',
+  sourceUrlPrefix: '--source-url-prefix',
+  sourceRoot: '--source-root',
+});
+
+/**
+ * Split a comma list, trimming and dropping empties.
+ *
+ * @param {unknown} value
+ * @returns {string[]}
+ */
 function list(value) {
   return String(value ?? '')
     .split(',')
@@ -58,9 +76,13 @@ function list(value) {
 
 /**
  * Parse argv into resolved options. Throws a usage error on an unknown flag or
- * a flag missing its value.
+ * a flag missing its value, and a `[dk-gherkin]` error for an option the shared
+ * validator rejects (e.g. `--section ../x`).
  *
  * @param {string[]} argv `process.argv`-shaped (the first two entries are skipped).
+ * @returns {{ root: string, sources: string[], docsRoot: string, section: string,
+ *   outDir: string, indexBasename: string[], sourceRoot: string,
+ *   sourceUrlPrefix: string | undefined, check: boolean }}
  */
 export function parseArgs(argv) {
   const raw = {
@@ -97,8 +119,17 @@ export function parseArgs(argv) {
     raw[key] = value;
     i++;
   }
-  const sources = list(raw.sources);
-  if (sources.length === 0) throw new Error('--sources is required (comma-separated directories)');
+  const sourceList = list(raw.sources);
+  if (sourceList.length === 0) throw new Error('--sources is required (comma-separated directories)');
+  const { sources, section } = validateGherkinOptions(
+    {
+      sources: sourceList,
+      section: raw.section,
+      sourceUrlPrefix: raw.sourceUrlPrefix,
+      ...(raw.sourceRoot === undefined ? {} : { sourceRoot: raw.sourceRoot }),
+    },
+    { optionName: (key) => FLAG[key] },
+  );
 
   const root = path.resolve(raw.root);
   const docsRoot = path.resolve(root, raw.docs);
@@ -106,8 +137,8 @@ export function parseArgs(argv) {
     root,
     sources,
     docsRoot,
-    section: raw.section,
-    outDir: path.join(docsRoot, raw.section),
+    section,
+    outDir: path.join(docsRoot, section),
     indexBasename: list(raw.indexBasename),
     sourceRoot: raw.sourceRoot === undefined ? root : path.resolve(root, raw.sourceRoot),
     sourceUrlPrefix: raw.sourceUrlPrefix,
@@ -132,6 +163,7 @@ export function main(argv) {
   }
   const warn = (/** @type {string} */ msg) => console.warn(`⚠ ${msg}`);
   const genOpts = {
+    sources: opts.sources,
     docsRoot: opts.docsRoot,
     outDir: opts.outDir,
     section: opts.section,
@@ -187,6 +219,7 @@ export function main(argv) {
 // installed behind a symlink (pnpm's node_modules, or a node_modules/.bin shim),
 // import.meta.url is the resolved path while argv[1] keeps the symlink path, so a
 // plain comparison would never match and the gate would exit 0 having done nothing.
+/** @returns {boolean} */
 function invokedDirectly() {
   try {
     return import.meta.url === pathToFileURL(realpathSync(process.argv[1] ?? '')).href;

@@ -9,7 +9,7 @@
  * The golden fixture under `fixtures/gherkin/generate/` is a verbatim copy of
  * the plan's worked example (`examples/features/**` → `examples/expected/**`).
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   existsSync,
   mkdirSync,
@@ -19,6 +19,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -26,6 +27,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import matter from 'gray-matter';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkGfm from 'remark-gfm';
 import { loadFeatures } from '../lib/gherkin/load.mjs';
 import {
   DEFAULT_GHERKIN_SECTION,
@@ -146,7 +150,9 @@ function gen(site: Site, opts: GenOpts = {}) {
   };
   const { sources = ['features'], ...rest } = opts;
   const model = loadFeatures({ sources, root: site.root, warn });
+  // Like config.ts and the CLI, the configured sources are passed through too.
   const result = generateFeaturePages(model, {
+    sources,
     docsRoot: site.docsRoot,
     outDir: site.outDir,
     sourceRoot: site.root,
@@ -717,7 +723,7 @@ describe('section label and section id (contract §6)', () => {
     const site = makeSite({ 'features/shipping/book.feature': feature('Book a slot') });
     expect(fm(plan(site).plan.get('README.md') as string).title).toBe('Behaviour');
     const custom = plan(site, { section: 'shipping-ops' }).plan.get('README.md') as string;
-    expect(fm(custom).title).toBe('Shipping ops');
+    expect(fm(custom).title).toBe('Shipping Ops');
   });
 
   it('the collision message uses the configured section id', () => {
@@ -726,5 +732,232 @@ describe('section label and section id (contract §6)', () => {
       'b/x.feature': feature('X two'),
     });
     expect(() => plan(site, { sources: ['a', 'b'], section: 'specs' })).toThrow(/both map to specs\/x\.md/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes (post-WP09)
+// ---------------------------------------------------------------------------
+
+interface MdNode {
+  type: string;
+  value?: string;
+  url?: string;
+  depth?: number;
+  children?: MdNode[];
+}
+const mdParser = unified().use(remarkParse).use(remarkGfm);
+function mdTree(markdown: string): MdNode {
+  return mdParser.runSync(mdParser.parse(matter(markdown).content)) as unknown as MdNode;
+}
+function mdWalk(node: MdNode, visit: (n: MdNode) => void): void {
+  visit(node);
+  for (const child of node.children ?? []) mdWalk(child, visit);
+}
+function mdText(node: MdNode): string {
+  if (node.type === 'text' || node.type === 'inlineCode') return node.value ?? '';
+  return (node.children ?? []).map(mdText).join('');
+}
+
+describe('a page is never written that the next run would refuse to own (review #1)', () => {
+  it.each(['!x', '[x]', 'foo:', '*a', 'null', 'true', '1e3'])(
+    '@dk:status=%s: regenerating twice succeeds and the page reads back as owned',
+    (value) => {
+      const site = makeSite({ 'features/shipping/book.feature': feature('Book a slot', { tags: `@dk:status=${value}` }) });
+      const first = gen(site);
+      expect(first.warnings.some((w) => w.includes(`invalid @dk:status=${value}`))).toBe(true);
+      const page = readFileSync(path.join(site.outDir, 'shipping/book.md'), 'utf8');
+      expect(fm(page).doc_status).toBe('active');
+      // Second run: before the fix this threw "refusing to write … book.md is not generated".
+      expect(() => gen(site)).not.toThrow();
+      expect(scanOutputDir(site.outDir).authored).toEqual([]);
+    },
+  );
+
+  it('planFeaturePages re-parses every planned page and throws an internal error on a bad block', async () => {
+    vi.resetModules();
+    vi.doMock('../lib/gherkin/feature-core.mjs', async (importOriginal) => {
+      const orig = await importOriginal<typeof import('../lib/gherkin/feature-core.mjs')>();
+      return { ...orig, serializeFrontmatter: () => '---\ntitle: [unclosed\n---' };
+    });
+    try {
+      const mod = await import('../lib/gherkin/generate.mjs');
+      const site = makeSite({ 'features/shipping/book.feature': feature('Book a slot') });
+      const model = loadFeatures({ sources: ['features'], root: site.root });
+      expect(() => mod.planFeaturePages(model, { docsRoot: site.docsRoot, sourceRoot: site.root })).toThrow(
+        /^\[dk-gherkin\] internal error: the planned page shipping\/book\.md/,
+      );
+    } finally {
+      vi.doUnmock('../lib/gherkin/feature-core.mjs');
+      vi.resetModules();
+    }
+  });
+});
+
+describe('route collisions the loader would hide are fatal (review #2)', () => {
+  it.each([
+    ['leaf first', { 'features/shipping.feature': feature('Ship it'), 'features/shipping/b.feature': feature('Bee') }, ['features']],
+    ['directory first (two sources)', { 'a/shipping/b.feature': feature('Bee'), 'b/shipping.feature': feature('Ship it') }, ['a', 'b']],
+    ['slug-alike names', { 'features/Shipping.feature': feature('Ship it'), 'features/shipping/b.feature': feature('Bee') }, ['features']],
+  ] as Array<[string, Record<string, string>, string[]]>)(
+    'a feature page and a directory hub on the same route (%s) → throws naming both sources',
+    (_label, files, sources) => {
+      const site = makeSite(files);
+      const err = thrown(() => gen(site, { sources }));
+      expect(err.message).toMatch(/^\[dk-gherkin\] route collision/);
+      const [leaf] = Object.keys(files).filter((f) => !f.includes('/b.feature'));
+      const [nested] = Object.keys(files).filter((f) => f.includes('/b.feature'));
+      expect(err.message).toContain(leaf);
+      expect(err.message).toContain(nested);
+      expect(err.message).toContain('behaviour/shipping');
+      expect(existsSync(site.outDir)).toBe(false);
+    },
+  );
+
+  it.each(['log.feature', 'Log.feature', 'deep/LOG.feature'])('a leaf that slugs to `log` (%s) is reserved → fatal', (name) => {
+    const site = makeSite({ [`features/${name}`]: feature('Change log-ish') });
+    const err = thrown(() => gen(site));
+    expect(err.message).toMatch(/^\[dk-gherkin\] reserved output name/);
+    expect(err.message).toContain(`features/${name}`);
+    expect(err.message).toContain('log.md');
+    expect(existsSync(site.outDir)).toBe(false);
+  });
+
+  it('a DIRECTORY named log is fine (only the log.md leaf is excluded by the loader)', () => {
+    const site = makeSite({ 'features/log/x.feature': feature('X marks') });
+    expect(Object.keys(plan(site).plan)).toBeDefined();
+    expect([...plan(site).plan.keys()]).toEqual(['README.md', 'log/README.md', 'log/x.md']);
+  });
+
+  it('generate.mjs carries no second index-basename rule (uses vocabulary-core)', () => {
+    const src = readFileSync(fileURLToPath(new URL('../lib/gherkin/generate.mjs', import.meta.url)), 'utf8');
+    expect(src).not.toMatch(/indexLeaves/);
+    expect(src).not.toMatch(/toLowerCase\(\)/);
+    expect(src).toMatch(/\bisIndexPath\b/);
+    expect(src).toMatch(/\bnormalizeIndexBasenames\b/);
+  });
+});
+
+describe('a charter-only docs root drives the mission prefix and the root hub title (review #4)', () => {
+  const CHARTER = [
+    'charter_version: 1',
+    'sections:',
+    '  entries:',
+    '    - id: plans',
+    '      label: Plans',
+    '      order: 10',
+    '      type: Plan',
+    '      subtypes:',
+    '        - match: missions',
+    '          type: Mission',
+    '    - id: behaviour',
+    '      label: Behaviour specs',
+    '      order: 70',
+    '      type: Specification',
+    '',
+  ].join('\n');
+
+  it('plans/missions/<slug> refs, no registry warning, and the charter label on the root hub', () => {
+    const site = makeSite({
+      'features/shipping/book.feature': feature('Book a slot', { tags: '@dk:mission=m1' }),
+      'docs/_meta/charter.yaml': CHARTER,
+    });
+    const { plan: out, warnings } = plan(site);
+    expect(fm(out.get('shipping/book.md') as string).related).toEqual(['plans/missions/m1']);
+    expect(warnings.filter((w) => w.includes('Mission subtype'))).toEqual([]);
+    const root = out.get('README.md') as string;
+    expect(fm(root).title).toBe('Behaviour specs');
+    expect(root).toContain('\n# Behaviour specs\n');
+  });
+});
+
+describe('hub text is escaped and titles match the sidebar (review #7)', () => {
+  it.each(['<b>x<i>', '[x](evil)', 'see *this*', 'www.example.com'])(
+    'a directory named %j renders as literal text in its parent hub (no html/link/emphasis)',
+    async (dir) => {
+      const { humanizeSection } = await import('../lib/vocabulary-core.mjs');
+      const site = makeSite({ [`features/${dir}/a.feature`]: feature('Alpha') });
+      const out = plan(site).plan;
+      const root = out.get('README.md') as string;
+      const tree = mdTree(root);
+      const bad: string[] = [];
+      mdWalk(tree, (n) => {
+        // The only raw HTML allowed is render.mjs's inert autolink breaker.
+        if (n.type === 'html' && n.value !== '<!---->') bad.push(`html ${n.value}`);
+        if (n.type === 'emphasis') bad.push('emphasis');
+        if (n.type === 'link' && !(n.url ?? '').startsWith('./')) bad.push(`link ${n.url}`);
+      });
+      expect(bad).toEqual([]);
+      const item = root.split('\n').find((l) => l.startsWith('- ['));
+      expect(item).toBeDefined();
+      // The visible list-item text carries the raw (humanised) name twice: title + description.
+      const list = tree.children?.find((n) => n.type === 'list') as MdNode;
+      const text = mdText(list);
+      expect(text.split(humanizeSection(dir)).length - 1).toBe(2);
+    },
+  );
+
+  it('the hub H1 is heading-escaped (a trailing " #" is not eaten as a closing sequence)', () => {
+    const site = makeSite({ 'features/a #/x.feature': feature('X marks') });
+    const hub = [...plan(site).plan].find(([k]) => k.endsWith('/README.md'))?.[1] as string;
+    const h1 = (mdTree(hub).children ?? []).find((n) => n.type === 'heading' && n.depth === 1) as MdNode;
+    expect(mdText(h1)).toBe('A #');
+  });
+
+  it('directory titles use the sidebar rule (Title Case per word)', async () => {
+    const { humanizeSection } = await import('../lib/vocabulary-core.mjs');
+    const site = makeSite({ 'features/shipping-ops/x.feature': feature('X marks') });
+    const hub = plan(site).plan.get('shipping-ops/README.md') as string;
+    expect(fm(hub).title).toBe('Shipping Ops');
+    expect(fm(hub).title).toBe(humanizeSection('shipping-ops'));
+  });
+});
+
+describe('symlinks in the output directory are never written through (review #8)', () => {
+  it('a symlinked .md (even one carrying the stamp) is classified authored → fatal before any write', () => {
+    const site = makeSite({ 'features/shipping/book.feature': feature('Book a slot') });
+    gen(site);
+    const outside = path.join(site.root, 'outside.md');
+    const stamped = '---\ntitle: "x"\ngenerated:\n  by: "doc-kitty/gherkin"\n  at: "sha256:000000000000"\n---\n';
+    writeFileSync(outside, stamped);
+    const target = path.join(site.outDir, 'shipping/book.md');
+    unlinkSync(target);
+    symlinkSync(outside, target);
+    expect(scanOutputDir(site.outDir).authored).toEqual(['shipping/book.md']);
+    expect(() => gen(site)).toThrow(/refusing to write.*shipping\/book\.md/);
+    expect(readFileSync(outside, 'utf8')).toBe(stamped);
+  });
+
+  it('a symlinked directory is authored too', () => {
+    const site = makeSite({ 'features/shipping/book.feature': feature('Book a slot') });
+    gen(site);
+    const elsewhere = path.join(site.root, 'elsewhere');
+    mkdirSync(elsewhere);
+    symlinkSync(elsewhere, path.join(site.outDir, 'linked'));
+    expect(scanOutputDir(site.outDir).authored).toEqual(['linked']);
+  });
+});
+
+describe('an unnamed Feature: H1, title and hub entry agree (review #5)', () => {
+  it('uses the keyword for the title, the H1 and the hub link, and warns once', () => {
+    const site = makeSite({
+      'features/x.feature': ['Feature:', '  Unnamed but described.', '', '  Scenario: S', '    Given g', ''].join('\n'),
+    });
+    const { plan: out, warnings } = plan(site);
+    const page = out.get('x.md') as string;
+    expect(fm(page).title).toBe('Feature');
+    expect(page).toContain('\n# Feature\n');
+    expect(out.get('README.md')).toContain('- [Feature](./x/) — Unnamed but described.');
+    expect(warnings.filter((w) => w.includes('Feature has no name'))).toEqual([
+      '[dk-gherkin] features/x.feature:1 Feature has no name; using "Feature"',
+    ]);
+  });
+});
+
+describe('the empty-sources warning names the source directories (review #13)', () => {
+  it('lists every configured source', () => {
+    const site = makeSite({ 'features/.keep': '', 'more/.keep': '' });
+    const { warnings } = gen(site, { sources: ['features', 'more'] });
+    expect(warnings).toEqual(['[dk-gherkin] no .feature files found in features, more; 0 previously generated page(s) will be removed']);
   });
 });

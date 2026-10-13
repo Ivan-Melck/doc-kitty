@@ -185,9 +185,16 @@ section), and every directory gets a generated hub page.
 
 Don't edit or add files under the generated section. Changes are overwritten on
 the next run, and any file in that folder without the generator's
-`generated.by` stamp fails the build. Two other names fail too: a feature file
-named like an index page (`README.feature`, or `index.feature` when the site
-accepts `index`), and two sources that map to the same output path.
+`generated.by` stamp fails the build, and so does a symlink. Some names fail
+too:
+
+- a feature file named like an index page (`README.feature`, or `index.feature`
+  when the site accepts `index`);
+- a feature file named `log.feature`, because `log.md` is the reserved change-log
+  name the docs loader skips;
+- a feature file next to a directory of the same name (`shipping.feature` beside
+  `shipping/`), because the page and that directory's hub would share one URL;
+- two sources that map to the same output path.
 
 ### Metadata tags
 
@@ -209,7 +216,7 @@ Feature: Book a consignment
 | Tag | Becomes | Notes |
 |-----|---------|-------|
 | `@dk:context=<ctx>` | `glossary_context` | The glossary context used to resolve terms in the step text. At most one. |
-| `@dk:status=<s>` | `doc_status` | Wins over `@wip` and `@deprecated`. A non-canonical value passes through, and the frontmatter gate warns about it. |
+| `@dk:status=<s>` | `doc_status` | Wins over `@wip` and `@deprecated`. The value must be a lower-case slug such as `active` or `in-review`; anything else is ignored with a warning. A non-canonical slug passes through, and the frontmatter gate warns about it. |
 | `@wip` | `doc_status: draft` | Draft pages are left out of the sitemap, feeds and agent API. |
 | `@deprecated` | `doc_status: deprecated` | |
 | *(none)* | `doc_status: active` | A committed feature is live behaviour. |
@@ -258,7 +265,9 @@ them yet, so the style is the author's responsibility.
 - **Literal text.** Step text, feature, rule, scenario and examples names, and table
   cells are shown exactly as typed. Characters that would trigger Markdown,
   HTML, directives or Markua attributes are escaped, so `*`, `_`, `<tag>`,
-  `[x]`, `~`, `{…}` and `word:name` appear literally.
+  `[x]`, `~`, `{…}` and `word:name` appear literally. A URL, a `www.` host or an
+  email address in step text stays plain text, not a link. Put links in a
+  description instead.
 - **Markdown.** Descriptions under a Feature, Rule, Scenario or Examples line are
   dedented and passed through as Markdown, so links, emphasis and lists work.
   This is the same trust level as any page in `docs/`.

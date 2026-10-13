@@ -105,7 +105,20 @@ export function loadSectionRegistry(docsRoot) {
   );
   const rawSections = data && typeof data === 'object' ? data.sections : undefined;
   if (!Array.isArray(rawSections)) return null;
+  return normalizeSectionRegistryEntries(rawSections);
+}
 
+/**
+ * The lenient bare-Node entry filter shared by {@link loadSectionRegistry} (the
+ * legacy `sections.yaml` list) and {@link resolveSectionRegistryEntries} (a
+ * charter's `sections.entries`): keeps only well-formed entries (a string `id`,
+ * `label`, and numeric `order`), carries `type` and well-formed `subtypes`
+ * through, and sorts by `order` ascending, ties broken by `id`.
+ *
+ * @param {readonly unknown[]} rawSections
+ * @returns {SectionRegistry}
+ */
+function normalizeSectionRegistryEntries(rawSections) {
   /** @type {SectionRegistry} */
   const entries = [];
   for (const rec of rawSections) {
@@ -448,4 +461,32 @@ export function resolveGovernance(docsRoot, { emitDeprecation = true } = {}) {
       legacyPresent,
     },
   };
+}
+
+/**
+ * The section registry exactly as the BUILD resolves it — the bare-Node twin of
+ * `resolveSectionRegistry` in `./sections.ts` (charter-aware, IC-03): a
+ * `charter.yaml` that declares `sections` wins (its `entries` list), else the
+ * legacy `_meta/sections.yaml`, else `null`. Goes through
+ * {@link resolveGovernance} (side-effect-free: no deprecation notice), so a
+ * malformed charter fails closed here exactly as it does in the build.
+ *
+ * Lenient where `sections.ts` is strict: a malformed charter ENTRY is dropped
+ * here (the {@link normalizeSectionRegistryEntries} filter) rather than thrown —
+ * the build's own `resolveSectionRegistry` already fails on it, so a bare-Node
+ * consumer (the Gherkin generator: hub label, `@dk:mission` prefix) never needs
+ * to duplicate that error. A charter carrying section metadata but no `entries`
+ * yields `null`, matching `sections.ts`.
+ *
+ * @param {string} docsRoot
+ * @returns {SectionRegistry | null}
+ */
+export function resolveSectionRegistryEntries(docsRoot) {
+  const { sections } = resolveGovernance(docsRoot, { emitDeprecation: false });
+  if (sections == null) return null;
+  // `charterResolved.sections` is only ever a mapping, so an array is the legacy
+  // `loadSectionRegistry` result (already normalised).
+  if (Array.isArray(sections)) return sections;
+  const entries = /** @type {Record<string, unknown>} */ (sections).entries;
+  return Array.isArray(entries) ? normalizeSectionRegistryEntries(entries) : null;
 }

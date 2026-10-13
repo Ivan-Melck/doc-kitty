@@ -121,6 +121,18 @@ function parseMarkdown(markdown: string, markua: boolean): Node {
 const smarty = unified().use(remarkSmartypants);
 
 /**
+ * Fold curly quotes back to straight ones before comparing. remark-smartypants
+ * picks a quote's DIRECTION from the whole document's concatenated text, so an
+ * unbalanced quote elsewhere on the page (a Feature name like `X'"`) can flip a
+ * quote inside a table cell; the per-node expectation built by {@link smartText}
+ * cannot see that context. The contract's round trip is "modulo smart quotes",
+ * so the direction is not part of it (dashes/ellipses still are).
+ */
+function foldQuotes(text: string): string {
+  return text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
+}
+
+/**
  * What smartypants makes of `children` in the same inline context (the
  * "modulo smart quotes" half of the round-trip): the expectation is built as an
  * mdast tree and run through the very same plugin.
@@ -150,11 +162,14 @@ function stepChildren(keyword: string, text: string, outline: boolean): Node[] {
   return [...kids, ...parts];
 }
 
-/** GFM literal autolinks are expected (`www.x.y`, `https://…`, `a@b.c`); anything else is not. */
-function isLiteralAutolink(link: Node): boolean {
-  const text = toText(link);
-  return link.url === text || link.url === `http://${text}` || link.url === `mailto:${text}`;
-}
+/**
+ * The inert empty HTML comment the escaper splits a GFM autolink literal with
+ * (`www<!---->.x.y`, `https<!---->://…`, `a<!---->@b.c`): the ONLY raw HTML a
+ * literal-text escape may emit. It splits the mdast text node, so neither
+ * micromark nor `mdast-util-gfm-autolink-literal`'s text-node transform sees a
+ * URL; a backslash escape does NOT work (the transform runs on the decoded text).
+ */
+const AUTOLINK_BREAK = '<!---->';
 
 interface ExpectedSection {
   heading: string;
@@ -213,11 +228,12 @@ function roundTripProblems(doc: GherkinDocument, body: string, markua: boolean):
   const tree = parseMarkdown(body, markua);
   const exp = expectations(doc);
 
-  // No raw HTML, no directives, no links other than GFM literal autolinks.
+  // No raw HTML (bar the autolink breaker), no directives, no links at all —
+  // GFM literal autolinks included: step text, names and cells are literal text.
   walk(tree, (n) => {
-    if (n.type === 'html') problems.push(`html node: ${n.value}`);
+    if (n.type === 'html' && n.value !== AUTOLINK_BREAK) problems.push(`html node: ${n.value}`);
     if (/Directive$/.test(n.type)) problems.push(`${n.type} node`);
-    if (n.type === 'link' && !isLiteralAutolink(n)) problems.push(`link node → ${n.url}`);
+    if (n.type === 'link') problems.push(`link node → ${n.url}`);
     if (n.type === 'footnoteReference') problems.push('footnoteReference node');
   });
 
@@ -226,9 +242,9 @@ function roundTripProblems(doc: GherkinDocument, body: string, markua: boolean):
   walk(tree, (n) => {
     if (n.type === 'heading') headings.push(n);
   });
-  const gotHeadings = headings.map(toText);
+  const gotHeadings = headings.map((h) => foldQuotes(toText(h)));
   const wantHeadings = exp.headings.map((h) =>
-    smartText('heading', [{ type: 'text', value: h }]),
+    foldQuotes(smartText('heading', [{ type: 'text', value: h }])),
   );
   if (JSON.stringify(gotHeadings) !== JSON.stringify(wantHeadings)) {
     problems.push(`headings ${JSON.stringify(gotHeadings)} ≠ ${JSON.stringify(wantHeadings)}`);
@@ -248,8 +264,8 @@ function roundTripProblems(doc: GherkinDocument, body: string, markua: boolean):
     const item = items[i];
     if (!item) return;
     const para = item.children?.[0] as Node;
-    const got = toText(para);
-    const want = smartText('paragraph', stepChildren(s.keyword, s.text, s.outline));
+    const got = foldQuotes(toText(para));
+    const want = foldQuotes(smartText('paragraph', stepChildren(s.keyword, s.text, s.outline)));
     if (got !== want) problems.push(`step ${i}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
     if (s.step.docString) {
       const code = item.children?.find((c) => c.type === 'code');
@@ -272,9 +288,9 @@ function roundTripProblems(doc: GherkinDocument, body: string, markua: boolean):
     problems.push(`table count ${tables.length} ≠ ${exp.tables.length}`);
   }
   exp.tables.forEach((rows, t) => {
-    const got = (tables[t]?.children ?? []).map((r) => (r.children ?? []).map(toText));
+    const got = (tables[t]?.children ?? []).map((r) => (r.children ?? []).map((c) => foldQuotes(toText(c))));
     const want = rows.map((r) =>
-      r.cells.map((c) => smartText('tableCell', [{ type: 'text', value: c.value }])),
+      r.cells.map((c) => foldQuotes(smartText('tableCell', [{ type: 'text', value: c.value }]))),
     );
     if (JSON.stringify(got) !== JSON.stringify(want)) {
       problems.push(`table ${t}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
@@ -443,7 +459,7 @@ describe('escapers', () => {
 
   it('escapeInline breaks text directives (":name" fires even without a label)', () => {
     expect(escapeInline('Note:term[x] 10:30 :é a: b https://x :-) x:')).toBe(
-      'Note\\:term\\[x\\] 10\\:30 \\:é a: b https://x :-) x:',
+      `Note\\:term\\[x\\] 10\\:30 \\:é a: b https${AUTOLINK_BREAK}://x :-) x:`,
     );
   });
 
@@ -532,6 +548,8 @@ function mulberry32(seed: number): () => number {
 
 const PUNCT = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
 const ALNUM = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+/** Multi-char tokens that assemble GFM autolink literals (`www.x.y`, `https://…`, `a@b.cd`). */
+const AUTOLINK_TOKENS = ['www.', 'WwW.', 'http://', 'HTTPS://', 'x.y', '.com', 'a@', '@b.cd', 'mailto:', 'a.b@c.de'];
 const PROPERTY_RUNS = 500;
 
 function randomPrintable(rand: () => number): string {
@@ -539,8 +557,10 @@ function randomPrintable(rand: () => number): string {
   let s = '';
   for (let i = 0; i < len; i += 1) {
     const r = rand();
-    // ~55% ASCII punctuation, ~25% alphanumerics, ~15% space, ~5% non-ASCII.
-    if (r < 0.55) s += PUNCT[Math.floor(rand() * PUNCT.length)];
+    // ~47% ASCII punctuation, ~8% autolink-literal tokens, ~25% alphanumerics,
+    // ~15% space, ~5% non-ASCII.
+    if (r < 0.08) s += AUTOLINK_TOKENS[Math.floor(rand() * AUTOLINK_TOKENS.length)];
+    else if (r < 0.55) s += PUNCT[Math.floor(rand() * PUNCT.length)];
     else if (r < 0.8) s += ALNUM[Math.floor(rand() * ALNUM.length)];
     else if (r < 0.95) s += ' ';
     else s += 'éß€✓'[Math.floor(rand() * 4)];
@@ -622,7 +642,7 @@ describe('markdownlint (repo .markdownlint.jsonc) on golden outputs', () => {
 // ===========================================================================
 
 describe('render.mjs purity', () => {
-  it('imports only ./text.mjs at runtime', () => {
+  it('imports only ./text.mjs and ../vocabulary-core.mjs at runtime', () => {
     const src = readFileSync(path.join(SRC_ROOT, 'lib/gherkin/render.mjs'), 'utf8');
     // Strip comments first: JSDoc `import('@cucumber/messages')` typedefs are type-only.
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
@@ -632,6 +652,65 @@ describe('render.mjs purity', () => {
       ...code.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
       ...code.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
     ].map((m) => m[1]);
-    expect(specifiers).toEqual(['./text.mjs']);
+    for (const spec of specifiers) expect(['./text.mjs', '../vocabulary-core.mjs']).toContain(spec);
+    expect(specifiers).toContain('./text.mjs');
+  });
+
+  it('no gherkin module defines its own code-unit comparator (compareCodeUnit is THE one)', () => {
+    const dir = path.join(SRC_ROOT, 'lib/gherkin');
+    for (const name of readdirSync(dir).filter((f) => f.endsWith('.mjs'))) {
+      const code = readFileSync(path.join(dir, name), 'utf8');
+      expect(code, name).not.toMatch(/\b(\w+)\s*<\s*(\w+)\s*\?\s*-1\s*:\s*\1\s*>\s*\2\s*\?\s*1\s*:\s*0/);
+      expect(code, name).not.toMatch(/\blocaleCompare\b/);
+    }
+  });
+});
+
+// ===========================================================================
+// 9. GFM autolink literals stay literal text (review #9)
+// ===========================================================================
+
+describe('GFM autolink literals are neutralised', () => {
+  const SAMPLES = [
+    'see https://x.y/z for details',
+    'HTTP://EXAMPLE.COM',
+    'visit www.foo.com today',
+    'WWW.FOO.COM',
+    'mail a@b.com or first.last+tag@sub.example.org',
+    'mailto:x@y.zz',
+    '(www.a.bc)',
+  ];
+
+  it.each(SAMPLES)('%j: no link node, text content round-trips (both stacks)', (sample) => {
+    for (const markua of [false, true]) {
+      for (const [wrap, unwrap] of [
+        [(t: string) => t, 'paragraph'],
+        [(t: string) => `| ${t} |\n| --- |`, 'tableCell'],
+        [(t: string) => `## ${t}`, 'heading'],
+      ] as const) {
+        const escaped = unwrap === 'tableCell' ? escapeCell(sample) : unwrap === 'heading' ? escapeHeading(sample) : escapeInline(sample);
+        const tree = parseMarkdown(wrap(escaped), markua);
+        const found: string[] = [];
+        let target: Node | undefined;
+        walk(tree, (n) => {
+          if (n.type === 'link') found.push(`link ${n.url}`);
+          if (n.type === 'html' && n.value !== AUTOLINK_BREAK) found.push(`html ${n.value}`);
+          if (!target && n.type === unwrap) target = n;
+        });
+        expect(found, `${unwrap} ${markua}`).toEqual([]);
+        expect(toText(target as Node), `${unwrap} ${markua}`).toBe(
+          smartText(unwrap, [{ type: 'text', value: sample }]),
+        );
+      }
+    }
+  });
+
+  it('a rendered step with a URL, a www host and an email produces no link node', () => {
+    const doc = parseGherkin(
+      'Feature: Links at https://f.example\n  Scenario: Mail a@b.co\n    Given I open www.foo.com\n      | https://x.y |\n',
+    );
+    const body = renderFeatureBody(doc);
+    expect(roundTripProblems(doc, body, false)).toEqual([]);
+    expect(roundTripProblems(doc, body, true)).toEqual([]);
   });
 });
