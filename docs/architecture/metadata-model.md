@@ -83,8 +83,10 @@ declares its kind rather than being exempt:
 - Content quadrants: `Tutorial`, `How-To`, `Reference`, `Explanation`.
 - Structural kinds: `Hub` (a section index or list page: minimal prose, many
   links), `ADR`, `Changelog`, `Glossary`, `Presentation`, `Persona` (an audience
-  description), and the planning kinds `Planning`, `Feature`, and `User-Journey`
-  (see [ADR-0010](../adr/0010-planning-kinds-and-moscow.md)).
+  description), the planning kinds `Planning`, `Feature`, and `User-Journey`
+  (see [ADR-0010](../adr/0010-planning-kinds-and-moscow.md)), and `Specification`
+  (a page generated from a Gherkin `.feature` file, see
+  [ADR-0046](../adr/0046-gherkin-feature-pages.md)).
 
 The vocabulary is open, like `type`: the validator checks the canonical set above
 and warns on an unknown value rather than failing.
@@ -270,7 +272,8 @@ feeds), so section identity, labels, and ordering are data, not code
 `type` names the kind of page and maps to its section (for example
 `architecture/*` is `Architecture`). The canonical set is the Common Docs `type`
 values (one per section, plus the ADR `Template` and the `plans/` and
-`operations/` sub-kinds) plus `Presentation`. The value set is open: the validator
+`operations/` sub-kinds) plus `Presentation` and `Specification` (the opt-in
+Gherkin section, [ADR-0046](../adr/0046-gherkin-feature-pages.md)). The value set is open: the validator
 checks the canonical set strictly and warns on an unknown value rather than
 failing, so a project's own sections degrade gracefully.
 

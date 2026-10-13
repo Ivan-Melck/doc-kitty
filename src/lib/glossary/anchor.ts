@@ -5,16 +5,8 @@
  * `name` into the same `#<anchor>` click target. Do **not** duplicate this rule
  * anywhere — a second slug function is a review finding (drift risk).
  *
- * Rule: lowercase, trim, collapse every run of non-alphanumerics to a single `-`,
- * then strip leading/trailing `-`. Pure and deterministic — no randomness, no date,
- * no locale — so the same `name` always yields the same anchor (INV-G2), and the
- * output is idempotent: `slug(slug(x)) === slug(x)` (its only characters are
- * `[a-z0-9]` and single interior `-`).
+ * The implementation lives in `../vocabulary-core.mjs` (hoisted for ADR-0046 so the
+ * bare-Node Gherkin drift gate can share it); this module re-exports it unchanged
+ * so every existing glossary import keeps working.
  */
-export function slug(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+export { slug } from '../vocabulary-core.mjs';

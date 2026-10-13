@@ -200,6 +200,10 @@ adopters can mark it without hard-failing the strict enum; see
 | `changelog/*` | `Changelog` |
 | `presentations/*` | `Presentation` (Kitty canonical addition) |
 
+`Specification` is also canonical: it is the `type` of the opt-in Gherkin
+section, which a project declares in its section registry rather than at a fixed
+path ([ADR-0046](../adr/0046-gherkin-feature-pages.md)).
+
 Section `README.md` files take their section's `type` (e.g. `context/README.md`
 → `Context`).
 
@@ -214,8 +218,9 @@ unknown value rather than failing.
 - **Content quadrants** (Divio): `Tutorial`, `How-To`, `Reference`,
   `Explanation`.
 - **Structural kinds**: `Hub` (a section index or link list), `ADR`,
-  `Changelog`, `Glossary`, `Presentation`, `Persona`, and the planning kinds
-  `Planning`, `Feature`, `User-Journey`.
+  `Changelog`, `Glossary`, `Presentation`, `Persona`, the planning kinds
+  `Planning`, `Feature`, `User-Journey`, and `Specification` (a page generated
+  from a Gherkin `.feature` file, [ADR-0046](../adr/0046-gherkin-feature-pages.md)).
 
 A section `README.md` is a `Hub`; an ADR page is `kind: ADR`; a getting-started
 guide is a `Tutorial`; most prose pages are `Reference` or `Explanation`. `type`

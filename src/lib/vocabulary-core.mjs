@@ -76,6 +76,35 @@ export function compareCodeUnit(a, b) {
 }
 
 // ---------------------------------------------------------------------------
+// The one anchor/path slug rule (hoisted from `glossary/anchor.ts`, ADR-0046)
+// ---------------------------------------------------------------------------
+
+/**
+ * `slug(name)` — the **single** deterministic slug function (D6, NFR-004): the
+ * glossary anchor rule, also used by the Gherkin page generator for output path
+ * segments. Hoisted here verbatim from `glossary/anchor.ts` (which re-exports it)
+ * so the bare-Node `generate-feature-pages.mjs --check` gate can import it without
+ * TS. Do **not** duplicate this rule anywhere — a second slug function is a review
+ * finding (drift risk).
+ *
+ * Rule: lowercase, trim, collapse every run of non-alphanumerics to a single `-`,
+ * then strip leading/trailing `-`. Pure and deterministic — no randomness, no date,
+ * no locale — so the same `name` always yields the same anchor (INV-G2), and the
+ * output is idempotent: `slug(slug(x)) === slug(x)` (its only characters are
+ * `[a-z0-9]` and single interior `-`).
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function slug(name) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// ---------------------------------------------------------------------------
 // Canonical vocabulary sets (single-sourced — #49 / data-model)
 //
 // Each is a JSDoc-const literal tuple so WP02 can write `z.enum(STATUSES)` and
@@ -97,7 +126,11 @@ export const STATUSES = /** @type {const} */ ([
   'durable',
 ]);
 
-/** OKF `type` vocabulary — one value per Common Docs section (17 items). */
+/**
+ * OKF `type` vocabulary — one value per Common Docs section (18 items).
+ * `Specification` is APPENDED (ADR-0046) for the opt-in, registry-declared
+ * Gherkin `behaviour` section; it has no frozen {@link SECTION_TYPE} fallback.
+ */
 export const DOC_TYPES = /** @type {const} */ ([
   'Context',
   'Architecture',
@@ -116,11 +149,13 @@ export const DOC_TYPES = /** @type {const} */ ([
   'Migration',
   'Changelog',
   'Presentation',
+  'Specification',
 ]);
 
 /**
  * The canonical `kind` vocabulary (ADR-0009): the four Divio content quadrants
- * plus the structural kinds (13 items). Open vocabulary — the site schema
+ * plus the structural kinds (14 items). `Specification` is APPENDED (ADR-0046):
+ * a page generated from a Gherkin `.feature` file. Open vocabulary — the site schema
  * accepts any string; the standalone gate warns on a value outside this set.
  */
 export const KINDS = /** @type {const} */ ([
@@ -137,6 +172,7 @@ export const KINDS = /** @type {const} */ ([
   'Planning',
   'Feature',
   'User-Journey',
+  'Specification',
 ]);
 
 // ---------------------------------------------------------------------------
