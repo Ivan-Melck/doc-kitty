@@ -95,6 +95,12 @@ export const ROUTES = {
   // so the axe scan covers the corpus's densest reader-facing surface in both
   // colour modes (SC-005 / the a11y half of the showcase acceptance).
   rhetoricChapter: `${BASE}/rhetoric/book-one/chapter-01/`,
+  // Behaviour spec — a GENERATED Gherkin feature page (gherkin-feature-pages WP08,
+  // ADR-0046), codegen'd from example/features/shipping/book-consignment.feature.
+  // The densest generated shape: rule-level H2s, scenario H3s, step lists with
+  // auto-linked glossary terms, a nested DocString, a step DataTable, a tagged
+  // Examples table, plus the audience + related blocks from its `@dk:` tags.
+  behaviourFeature: `${BASE}/behaviour/shipping/book-consignment/`,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -250,6 +256,19 @@ const DECK_MARKUA_GUARD_ROOTS = [
   MARKUA_FIGURE_ROOT,
 ] as const;
 
+// Behaviour-spec non-vacuity (gherkin-feature-pages WP08): the generated page's
+// own surfaces — a glossary auto-link inside step prose, a rendered table (step
+// DataTable / Examples), and a code block (the DocString).
+export const BEHAVIOUR_STEP_GLOSSARY_ROOT = 'main li a[data-glossary-term="cargo"]';
+export const BEHAVIOUR_TABLE_ROOT = 'main table';
+export const BEHAVIOUR_DOCSTRING_ROOT = 'main pre';
+const STARLIGHT_BEHAVIOUR_GUARD_ROOTS = [
+  ...STARLIGHT_GUARD_ROOTS,
+  BEHAVIOUR_STEP_GLOSSARY_ROOT,
+  BEHAVIOUR_TABLE_ROOT,
+  BEHAVIOUR_DOCSTRING_ROOT,
+] as const;
+
 // The axe coverage set: the four in-frame Starlight surfaces + the diagram
 // demonstrator (WP06 T020) + the out-of-frame showcase deck, each run in BOTH
 // colour modes. The diagram routes (demonstrator + deck) carry a `renderWait` gate
@@ -367,6 +386,18 @@ export const AXE_PAGES: ReadonlyArray<AxePage> = [
     path: ROUTES.rhetoricChapter,
     shell: 'starlight',
     guardRoots: STARLIGHT_GUARD_ROOTS,
+  },
+  // gherkin-feature-pages WP08 — a generated behaviour spec page, scanned in BOTH
+  // colour modes. No `renderWait` (all build-time SSR). Its guardRoots pin the
+  // generated surfaces a non-Gherkin page cannot satisfy: a step DataTable
+  // (`table`), the Examples/DocString code (`pre`), and an auto-linked glossary
+  // term INSIDE a step list item — so the scan cannot pass against a page whose
+  // spec body failed to render.
+  {
+    name: 'Behaviour spec (/behaviour/shipping/book-consignment/)',
+    path: ROUTES.behaviourFeature,
+    shell: 'starlight',
+    guardRoots: STARLIGHT_BEHAVIOUR_GUARD_ROOTS,
   },
 ];
 

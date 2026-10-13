@@ -51,6 +51,19 @@ sections:
       - match: missions
         type: Mission
 
+  # gherkin-feature-pages WP08 (ADR-0046): the GENERATED behaviour section.
+  # `behaviour/**` is codegen'd from `example/features/**/*.feature` by the
+  # `gherkin` option in astro.config.mjs and is never hand-edited. Its `type:
+  # Specification` is registry-declared (like the custom `rhetoric` section
+  # below), not a built-in section fallback. `feeds` deliberately OMITS `rss`:
+  # a large spec suite would flood the changelog-style feed, so specs reach the
+  # sitemap, llms.txt and the agent API only (an absent `feeds` means all four).
+  - id: behaviour
+    label: Behaviour
+    order: 38
+    type: Specification
+    feeds: [sitemap, llms, agent]
+
   - id: guides
     label: Guides
     order: 40

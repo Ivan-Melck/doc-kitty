@@ -137,3 +137,23 @@ sections:
     expect(keep('https://site.test/context/draft/')).toBe(false);
   });
 });
+
+describe('sitemapDraftFilter — draft routes are read at the first call, not at construction', () => {
+  // gherkin-feature-pages (ADR-0046): `doc-kitty:gherkin` writes its pages in
+  // `astro:config:setup`, AFTER `defineDocKittyIntegrations` built this filter.
+  // The draft set must reflect the tree as it stands when sitemap runs the filter
+  // (astro:build:done), or a page that just became a draft leaks into the sitemap.
+  it('drops a draft written after the filter was built, keeps a page that stopped being one', () => {
+    const root = makeDocs(CONTENT);
+    roots.push(root);
+    const keep = sitemapDraftFilter(root, '/');
+    // Generated in config:setup, after construction: one new draft, and the old
+    // draft flipped to active.
+    mkdirSync(path.join(root, 'behaviour'), { recursive: true });
+    writeFileSync(path.join(root, 'behaviour', 'wip.md'), draft('Work in progress'), 'utf8');
+    writeFileSync(path.join(root, 'context', 'draft.md'), active('No longer a draft'), 'utf8');
+    expect(keep('https://site.test/behaviour/wip/')).toBe(false);
+    expect(keep('https://site.test/context/draft/')).toBe(true);
+    expect(keep('https://site.test/guides/start/')).toBe(true);
+  });
+});
