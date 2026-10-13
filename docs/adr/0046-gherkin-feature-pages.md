@@ -51,8 +51,12 @@ gates (ADR-0026's finding AS-6).
 ## Decision
 
 1. **Opt-in preset.** `defineDocKittyIntegrations({ gherkin: { sources, section? } })`.
-   Absent means no integration and unchanged pages, routes and config (the
-   release's TOC target-size CSS is a separate, site-wide accessibility fix). Unlike the glossary,
+   Absent means no integration and unchanged pages, routes and config. Three
+   things from the same release still change with the preset off: `Specification`
+   joins the `kind` and `type` vocabulary, the desktop "On this page" links get a
+   24px minimum target (a site-wide accessibility fix in `toc-rail.css`), and
+   `@cucumber/gherkin` and `@cucumber/messages` are installed for every consumer.
+   Unlike the glossary,
    activation is an explicit option, not presence, because `.feature` files have
    no canonical location.
 2. **Parse once with the official parser.** `@cucumber/gherkin` +
@@ -81,6 +85,24 @@ gates (ADR-0026's finding AS-6).
 8. **Shared pure core in `.mjs`.** The tag contract, renderer and planner are
    JSDoc-typed `.mjs`, imported by both the TS integration and the bare-Node
    `generate-feature-pages.mjs --check`, so build and gate agree by construction.
+9. **A scenario index for agents, mounted by the site.** `scenarioIndexRoute()`
+   (from `@spec-kitty/doc-toolkit/routes`) serves `/api/scenarios.json`. At build
+   time it re-parses each published feature page's `.feature` source with the same
+   loader, so a site mounts it by hand at `src/pages/api/scenarios.json.ts` and
+   repeats the `sourceRoot` and `sourceUrlPrefix` it gave `gherkin`. A page whose
+   source is missing or has changed since generation fails the build. `llms.txt`
+   advertises the route whenever a published generated page exists, so a site that
+   does not mount it, or that turns the preset off while keeping the committed
+   pages, advertises a page that does not exist.
+
+   Decision taken at landing: the route stays site-mounted for 0.2.0, like every
+   other doc-kitty route. Having the integration inject it was considered and left
+   for separate work, because it would be the toolkit's first injected route and
+   needs a packed-tarball proof before it ships.
+10. **The feed is the site's choice.** The example site lists its feature pages
+    and hubs in RSS (its `behaviour` section feeds `rss`). A generated page has no
+    `updated` date unless the feature carries `@dk:updated=<date>`, so by default
+    its item has no `<pubDate>` and sorts after the dated items.
 
 ## Consequences
 
@@ -88,7 +110,8 @@ gates (ADR-0026's finding AS-6).
 
 - Sidebar, sitemap, RSS, `llms.txt`, agent API, related and audience blocks,
   draft gating and glossary linking all work with **no new render code** and no
-  plugin-order change.
+  plugin-order change. The example site lists the pages in its RSS feed; the items
+  are undated unless a feature sets `@dk:updated`.
 - Ambiguous domain language in specs surfaces as the existing glossary collision
   warning.
 - Agents get behavioural contracts through the same discovery surface as the
@@ -98,12 +121,27 @@ gates (ADR-0026's finding AS-6).
 ### Negative
 
 - A second generated tree in git (the same trade-off ADR-0026 accepted).
-- One new runtime dependency pair (`@cucumber/gherkin`, `@cucumber/messages`).
+- One new runtime dependency pair (`@cucumber/gherkin`, `@cucumber/messages`),
+  installed for every consumer whether or not the preset is on.
 - The frontmatter gate's generated-page exemption moves from a path rule to a
   marker rule (`generated.by`), keeping the glossary path rule for compatibility.
 
 ### Risks
 
+- **Trust boundary.** Feature descriptions are Markdown passthrough, so raw HTML in
+  a description lands on the page, on the hub and in the page's `description`.
+  Step text, names and table cells are escaped; descriptions are not. Pull
+  `.feature` files only from sources you trust as much as your docs.
+- **Ownership is by stamp only.** A hand-written page that carries
+  `generated.by: doc-kitty/gherkin` is treated as generated, and is pruned when no
+  feature maps to it.
+- **Only Feature-level tags gate publication.** A `@wip` on a single Scenario does
+  not hide it; it is shown as a tag on the page.
+- **Known limit: a directory holding only draft features gets no hub.** With drafts
+  built (the default), the sidebar then warns "Add an index page to …". The author
+  cannot act on it, because an authored file in the generated section stops the
+  build. The warning goes away when one feature in the directory is published, or
+  when the site builds with `DK_PUBLISH_DRAFTS=off`.
 - Imperative, UI-level scenarios read poorly as docs. Mitigated by authoring
   guidance; a lint is a follow-up.
 - Committed pages freeze when the preset is turned off. Removal is a manual
@@ -135,6 +173,32 @@ peer range, and has the same gate blindness as Option B.
 
 Rejected as the page source: a standalone React report outside theme, nav,
 glossary and agent API. It could fit phase 2 as an embedded results view.
+
+### Option E: a `gherkin` fence renders as a structured scenario (issue #120, slice A)
+
+[Issue #120](https://github.com/spec-kitty/doc-kitty/issues/120) proposes four
+slices. Slice A turns a `gherkin` code fence in a Markdown page into a structured
+scenario (feature title and narrative, step list, tables). It serves an author who
+shows one scenario inside a guide. It does not by itself publish a feature
+directory, and the author still pastes the feature text into the page.
+
+### Option F: include a feature, or one scenario, by path (issue #120, slice B)
+
+Slice B includes a feature file, or one scenario selected by name or tag, through
+slice A's rendering. It removes the copy-paste and the drift, but each include is
+an authored page, so the sidebar, hubs, `llms.txt` and agent API see only what an
+author chose to include.
+
+This ADR delivers slice C first: a configured directory of `.feature` files
+becomes generated pages and hubs (the issue's jobs 1, 3 and 4). Slices A and B
+remain open for separate work. They serve the "show one scenario in a guide" job
+and can reuse this ADR's renderer.
+
+### Option G: the integration injects the scenario index route
+
+Considered at landing and left for separate work (see decision 9). It would remove
+the by-hand mount and the repeated `sourceRoot`/`sourceUrlPrefix`, but it would be
+the toolkit's first injected route and needs a packed-tarball proof first.
 
 ## References
 
