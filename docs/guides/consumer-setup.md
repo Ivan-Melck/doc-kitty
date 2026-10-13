@@ -462,8 +462,10 @@ astro build && pnpm exec dockitty-assert-no-broken-links dist --base /docs --sit
 ```
 
 The other binaries are `dockitty-check-redirect-coverage`,
-`dockitty-validate-catalog`, `dockitty-new-doc`, and `dockitty-scaffold`. The
-same files are also importable as `@spec-kitty/doc-toolkit/scripts/<name>.mjs`.
+`dockitty-validate-catalog`, `dockitty-new-doc`, `dockitty-scaffold`, and
+`dockitty-generate-feature-pages` (see
+[Gherkin feature pages](#optional-gherkin-feature-pages) below). The same files are
+also importable as `@spec-kitty/doc-toolkit/scripts/<name>.mjs`.
 
 ## 8. Govern your docs — the documentation charter
 
@@ -543,6 +545,87 @@ A malformed charter fails the build naming the file and offending key; an unknow
 *top-level* key only warns. If you already run a legacy `_meta/vocabulary.yaml`
 or `_meta/sections.yaml`, both keep working (you will see one deprecation notice)
 — consolidate them with [Migrating to the charter](/guides/migrating-to-charter/).
+
+## Optional: Gherkin feature pages
+
+If your repository keeps behaviour specs in Gherkin `.feature` files, the
+`gherkin` option publishes each feature as a `kind: Specification` page. It is off
+unless you set it, and with it unset the build is unchanged. The design is in
+[ADR-0046](../adr/0046-gherkin-feature-pages.md) and
+[Gherkin feature pages](../architecture/gherkin-pages.md); how to write the files
+is in [Authoring behaviour specs](./authoring.md#authoring-behaviour-specs).
+
+```js
+// astro.config.mjs (inside defineDocKittyIntegrations({ … }))
+gherkin: {
+  sources: ['../features'],    // walked for *.feature, relative to the site root
+  section: 'behaviour',        // default; pages land in docs/behaviour/
+  sourceRoot: '..',            // report source paths relative to the repo root
+  sourceUrlPrefix: 'https://github.com/you/repo/blob/main/',
+},
+```
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `sources` | required | Directories walked recursively for `*.feature`, relative to the site root (`process.cwd()`). Dot-directories and `node_modules` are skipped. A missing directory fails the build. |
+| `section` | `behaviour` | The folder under your docs directory the pages are generated into. It must be a single folder name and can't be `glossary` or `_meta`. |
+| `sourceRoot` | the site root | The directory each page's `sources:` path is relative to. Set `'..'` when the site lives in a sub-package and the features are elsewhere in the repo. |
+| `sourceUrlPrefix` | none | Prefixed verbatim to that path, so `sources:` links to the file in your repository browser. Without it, `sources:` holds the bare relative path. |
+
+What happens on each build and dev-server start:
+
+- Every `.feature` is parsed once. A syntax error fails the build with
+  `[dk-gherkin] <path>:<line>:<col>`, listing every error in every file.
+- One page per feature and one hub per directory are written into
+  `docs/<section>/`, and pages whose source is gone are removed. The hub file is the
+  first entry of `indexBasename` (`README.md` by default).
+- The section belongs to the generator. Any file in it without the generator's
+  `generated.by` stamp fails the build, so don't point `section` at an authored
+  folder.
+
+Register the section so it gets a label, a sidebar group and its
+`type: Specification`. Add an entry wherever your section registry lives, under
+`sections.entries` in `docs/_meta/charter.yaml` (step 8) or in a legacy
+`docs/_meta/sections.yaml`:
+
+```yaml
+- { id: behaviour, label: Behaviour, order: 38, type: Specification }
+```
+
+One gap: the generator itself reads only the legacy `docs/_meta/sections.yaml`.
+It takes two things from it, the root hub's title and the `Mission` subtype that
+`@dk:mission` tags link to. With a charter-only registry the hub title is the
+humanised section id, and `@dk:mission=<slug>` links to `plans/<slug>` with a
+build warning. Use `@dk:related=<full slug>` for mission links in that case.
+
+**Commit the generated pages.** The bare-Node gates (frontmatter, links) read
+files on disk, and reviewers see how a spec change changes the page. Then guard
+them in CI with the `--check` mode of `dockitty-generate-feature-pages`, which
+writes nothing and exits 1 when the committed pages differ from the sources. The
+script can't read `astro.config.mjs`, so its flags must mirror the option, and
+`--index-basename` must match your `indexBasename`:
+
+```sh
+# Regenerate locally without a build:
+pnpm exec dockitty-generate-feature-pages --sources ../features --docs docs \
+  --section behaviour --source-root .. \
+  --source-url-prefix https://github.com/you/repo/blob/main/ \
+  --index-basename README,index
+
+# CI drift gate (same flags, plus --check):
+pnpm exec dockitty-generate-feature-pages --sources ../features --docs docs \
+  --section behaviour --source-root .. \
+  --source-url-prefix https://github.com/you/repo/blob/main/ \
+  --index-basename README,index --check
+```
+
+Run it from the site directory, or pass `--root <site dir>`; every other path is
+relative to that root. `--check` lists each `added`, `changed`, `stale` or
+`authored` path it finds.
+
+To turn the feature off, remove the option **and** delete `docs/<section>/`.
+Removing only the option leaves the last generated pages in place, still building
+as ordinary content.
 
 ## Caveat — `check-links` strict mode does not cover your tree
 

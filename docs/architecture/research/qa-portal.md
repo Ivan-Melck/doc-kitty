@@ -2,13 +2,15 @@
 title: QA portal (tests as documentation)
 description: "Render test and BDD results in the docsite so a repository's site also serves as a QA portal."
 doc_status: draft
-updated: 2026-08-22
+updated: 2026-10-13
 type: Architecture
 kind: Explanation
 tags: [qa, testing, bdd, living-documentation, portal]
 related:
   - architecture/research/mission-status-portal
   - architecture/ci-cd-pipeline
+  - architecture/gherkin-pages
+  - adr/0046-gherkin-feature-pages
 ---
 
 # QA portal (tests as documentation)
@@ -48,6 +50,15 @@ specification the reader can browse.
   This is a natural per-kind layout (a `Test` or `Spec` kind, matching the
   capitalized `kind` vocabulary in ADR-0009), tying to `kind`-drives-layout.
 - Optional: a link to or embed of Great Expectations data docs for data projects.
+
+> **Update (2026-10-13): the document half of BDD living documentation has
+> shipped.** The opt-in `gherkin` preset renders `.feature` files as
+> `kind: Specification` pages, glossary-linked and tied to personas, missions and
+> ADRs ([Gherkin feature pages](../gherkin-pages.md),
+> [ADR-0046](../../adr/0046-gherkin-feature-pages.md)). It renders the
+> specification only, with no results. Phase 2 adds the status badges on top of
+> those pages: pass/fail per scenario and example row, read from a Cucumber
+> results file. That results half still depends on the CI wiring described below.
 
 ## How results arrive (open decision)
 

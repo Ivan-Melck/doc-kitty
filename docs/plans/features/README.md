@@ -2,7 +2,7 @@
 title: Features
 description: "The doc-kitty feature pages, grouped by MoSCoW priority as set in the roadmap."
 doc_status: draft
-updated: 2026-08-22
+updated: 2026-10-13
 type: Feature
 kind: Hub
 agent:
@@ -44,6 +44,8 @@ split and the MoSCoW levels are set in the roadmap; this index reflects them.
   glossary with Contextive.
 - [Generated sitemap + HATEOAS read API](./generated-sitemap-and-read-api.md)
   (Should) — SEO sitemap and a richer `_links` read API.
+- [Gherkin feature pages](./gherkin-feature-pages.md) (Should) — `.feature` files
+  rendered as glossary-linked `Specification` pages.
 
 ## Could
 

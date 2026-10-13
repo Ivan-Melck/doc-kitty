@@ -2,7 +2,7 @@
 title: Roadmap
 description: "Phased plan for doc-kitty, split into MVP and extended scope with MoSCoW priorities."
 doc_status: active
-updated: 2026-09-19
+updated: 2026-10-13
 type: Plan
 kind: Planning
 authors:
@@ -30,6 +30,11 @@ the reuse contract is demonstrated fact, not a claim. The remaining feature
 frontier is only the three **Could-tier, design-only** repository portals
 (mission status, QA, ticketing). See [Where we are now](#where-we-are-now-2026-09-19)
 below.
+
+**Update (2026-10-13):** a further Should-tier feature has landed:
+[Gherkin feature pages](./features/gherkin-feature-pages.md)
+([ADR-0046](../adr/0046-gherkin-feature-pages.md)). It ships the document half of
+the QA portal's BDD living documentation; the QA portal itself stays design-only.
 
 (This is a `Planning` page and its features are `Feature` pages per
 [ADR-0010](../adr/0010-planning-kinds-and-moscow.md).)
@@ -104,6 +109,7 @@ tree; the second competes with Leanpub, which we are not doing.
 | Glossary + Contextive | M4 | Should | Extended | ✅ Done | Ubiquitous-language support; multi-context autolinking, hover preview, `:term` directive. |
 | Example content from ars-rethorica | ars-rethorica-example | Could | Extended | ✅ Done | The ars-rethorica showcase corpus (Introduction, Preamble, Book I 15 chapters, Book II/III landings, generated rhetoric glossary, two reader personas). |
 | Doctrine variation | M7 | Should | Extended | ✅ Done | Native `_meta/charter.yaml` governs the whole convention (type/kind vocab, `doc_status` set, sections/IA registry, required-field set), resolved with no Spec Kitty runtime dependency; `#100`, ADR-0042, closes #98/#99. |
+| Gherkin feature pages | — | Should | Extended | ✅ Done | Opt-in `gherkin` preset: `.feature` files become glossary-linked `Specification` pages with a `--check` drift gate (ADR-0046). The document half of the QA portal's BDD living documentation; results are phase 2. |
 | Mission status portal | — | Could | Extended | 📐 Design-only | Repository portal; depends on spec-kitty integration. |
 | QA portal | — | Could | Extended | 📐 Design-only | Repository portal; depends on CI test artifacts. |
 | Ticketing report | — | Could | Extended | 📐 Design-only | Repository portal; adaptor work, GitHub first. |

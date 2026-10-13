@@ -32,3 +32,12 @@ exist yet and say where it should live.
   the source tree, not just the API, when a doc seems missing.
 - Terms live in `context/domain.md`; decisions in `adr/`; present-tense design in
   `architecture/`; future work in `plans/`.
+- Behaviour specs, when a site turns on the `gherkin` option, are generated pages
+  under the `behaviour` section (configurable) with `kind: Specification`, one per
+  Gherkin `.feature` file. Their source is the `.feature` file named in the page's
+  `sources:` field. Edit that file, never the generated page. Feature tags such as
+  `@dk:mission=<slug>` and `@dk:adr=<n>` become `related` refs, so filter on
+  a page's `related` metadata to find the specs for a mission or decision.
+- When the site also mounts `scenarioIndexRoute`, `GET /api/scenarios.json` lists
+  every feature, rule and scenario with anchors, tags, steps and related refs.
+  Query it for "which scenarios cover X" instead of scraping the pages.

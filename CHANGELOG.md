@@ -167,6 +167,35 @@ Each item is described in full under Changed.
   `applyDraftPolicy`, and the package root gains `isDraftEntry`. These are
   internal seams the toolkit's own tests use. They are not supported API and
   may change without notice.
+- **Gherkin `.feature` files can be published as documentation**
+  ([ADR-0046](docs/adr/0046-gherkin-feature-pages.md)). A new opt-in `gherkin` option on
+  `defineDocKittyIntegrations` (`{ sources, section?, sourceRoot?, sourceUrlPrefix? }`) parses every
+  `.feature` under `sources` once with `@cucumber/gherkin` and generates one
+  `kind: Specification` page per feature, plus a hub per directory, into
+  `<docsDir>/<section>/` (default `behaviour`) at `astro:config:setup`. The pages
+  are ordinary collection files, so the sidebar, sitemap, RSS, `llms.txt`, the
+  agent API and glossary auto-linking pick them up. Feature-level
+  `@dk:<key>=<value>` tags map to frontmatter (`glossary_context`, `doc_status`,
+  `audience`, `related` missions and ADRs, `updated`, `glossary_autolink`,
+  `agent.priority`); `@wip`/`@deprecated` set the status and other tags pass
+  through to `tags`. Output is deterministic (`generated.at` is a source content
+  hash), only changed files are rewritten, stale generated pages are pruned, and
+  an authored file in the generated section fails the build. With the option
+  unset the build is byte-identical. See the
+  [consumer setup guide](docs/guides/consumer-setup.md#optional-gherkin-feature-pages).
+- **`Specification` joins the canonical `kind` and `type` vocabulary**, for the
+  generated pages.
+- **`dockitty-generate-feature-pages`** — a new package binary (and
+  `@spec-kitty/doc-toolkit/scripts/generate-feature-pages.mjs`) that regenerates
+  the feature pages without a build, or with `--check` exits 1 listing every
+  added, changed, stale or authored path, so CI can fail when committed pages
+  drift from their `.feature` sources. Its flags mirror the `gherkin` option.
+- **`validate-frontmatter` recognises generated pages by their `generated.by`
+  stamp** (`doc-kitty/glossary` or `doc-kitty/gherkin`), not only by the
+  `glossary/` path, and keeps exempting them from `type` and, when they carry
+  none, `updated`.
+- **New dependencies:** `@cucumber/gherkin` `42.0.1` and `@cucumber/messages`
+  `34.2.1`, exact-pinned.
 
 ### Fixed
 
