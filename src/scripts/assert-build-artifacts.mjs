@@ -129,7 +129,12 @@ import {
 //     guides/markua-footnotes-showcase.md (+5) → 56 → 61. No page was added.
 //     Four drafts remain: adr/template, context/audience/draft-persona,
 //     guides/markua-footnotes-malformed and presentations/draft-preview.
-const EXPECTED_INDEX_ENTRY_COUNT = 61;
+//   - gherkin-feature-pages WP08 (ADR-0046) turns on the generated behaviour
+//     section: +6 published pages, 61 -> 67: the hubs behaviour/, behaviour/hr/,
+//     behaviour/shipping/ (+3) and the feature pages book-consignment,
+//     declare-customs, request-leave (+3). The `@wip` track-consignment page is
+//     doc_status:draft and does NOT count.
+const EXPECTED_INDEX_ENTRY_COUNT = 67;
 
 // Sitemap page-URL count == the published set (drafts excluded by the filter).
 // WP09 adds the same six glossary pages (3 demo + 3 generated), 19 → 25.
@@ -143,8 +148,10 @@ const EXPECTED_INDEX_ENTRY_COUNT = 61;
 // (the @astrojs/sitemap filter drops drafts, so the sitemap page-URL count equals
 // the published index set), 31 → 56. See the index-count derivation above.
 // sidebar-frame-header-carrier promotes five example pages from draft to active
-// (the Plans section and the footnotes showcase, +5), 56 → 61.
-const EXPECTED_SITEMAP_URL_COUNT = 61;
+// (the Plans section and the footnotes showcase, +5), 56 -> 61.
+// gherkin-feature-pages WP08 adds +6 behaviour pages (3 hubs + 3 published
+// features; the @wip draft is filtered), 61 -> 67.
+const EXPECTED_SITEMAP_URL_COUNT = 67;
 
 // A draft page (example/docs/adr/template.md, doc_status: draft). Its route
 // MUST NOT appear in the sitemap once the draft filter is in place.
@@ -179,6 +186,26 @@ const EXPECTED_AGENT_API_VERSION = '2';
 // least id/title/url (catalog-and-citation contract).
 const BIBLIOGRAPHY_ENDPOINT_RELPATH = path.join('api', 'bibliography.json');
 const EXPECTED_BIBLIOGRAPHY_RECORD_KEYS = ['id', 'title', 'url'];
+
+// `/api/scenarios.json` (gherkin-feature-pages WP10, ADR-0046): the scenario
+// index lists exactly the published, agent-discoverable GENERATED feature pages —
+// cross-checked against the `kind: Specification` pages in `/api/index.json`
+// (built by a different route) and pinned to today's example (book-consignment,
+// declare-customs, request-leave; the `@wip` track-consignment page is a draft).
+// One known scenario pins the per-scenario shape end to end, including the
+// anchor Astro's `rehypeHeadingIds` assigned (read from `render().headings`).
+const SCENARIO_INDEX_RELPATH = path.join('api', 'scenarios.json');
+const EXPECTED_SCENARIO_FEATURE_COUNT = 3;
+const SCENARIO_DRAFT_FEATURE_ID = 'behaviour/shipping/track-consignment';
+const SCENARIO_KNOWN_FEATURE_ID = 'behaviour/shipping/book-consignment';
+const SCENARIO_KNOWN = {
+  name: 'Book cargo that fits',
+  anchor: 'scenario-book-cargo-that-fits',
+  rule: 'A booking within capacity is confirmed',
+  tags: ['smoke'],
+  outline: false,
+};
+const SCENARIO_INDEX_LLMS_LINE = 'Scenario index: https://spec-kitty.github.io/doc-kitty/api/scenarios.json';
 
 // README-as-index proof: a section's README.md served at its directory route.
 // The ADR section's README H1 is "Decision Records"; it must appear in the HTML
@@ -1892,6 +1919,85 @@ async function main() {
     }
   });
   ok(`bibliography endpoint: valid JSON, { version, count, records[] }, ${biblio.count} record(s) with id/title/url`);
+
+  // 4d) /api/scenarios.json — the scenario index (WP10). Valid JSON; features[]
+  // equals the published generated feature pages (agent index cross-check + pin);
+  // the draft feature is absent; one known scenario carries its exact anchor,
+  // rule, tags, outline flag and trimmed step keywords; llms.txt advertises it.
+  const scenariosAbs = path.join(distDir, SCENARIO_INDEX_RELPATH);
+  await assertNonEmptyFile(scenariosAbs, `scenario index (${SCENARIO_INDEX_RELPATH})`);
+  const scenariosText = await readTextOrFail(scenariosAbs, `scenario index (${SCENARIO_INDEX_RELPATH})`);
+  let scenarioIndex;
+  try {
+    scenarioIndex = JSON.parse(scenariosText);
+  } catch (err) {
+    fail(`scenario index: not valid JSON (${err.message})`);
+  }
+  if (scenarioIndex === null || typeof scenarioIndex !== 'object' || !Array.isArray(scenarioIndex.features)) {
+    fail('scenario index: top level is not an object with a "features" array');
+  }
+  if (scenarioIndex.generated_from !== 'doc-kitty/gherkin') {
+    fail(`scenario index: generated_from is ${JSON.stringify(scenarioIndex.generated_from)}, expected "doc-kitty/gherkin"`);
+  }
+  if (scenarioIndex.count !== scenarioIndex.features.length) {
+    fail(`scenario index: count (${scenarioIndex.count}) does not match features.length (${scenarioIndex.features.length})`);
+  }
+  const specPages = index.pages.filter((page) => page.kind === 'Specification' && page.section === 'behaviour');
+  if (scenarioIndex.features.length !== specPages.length) {
+    fail(
+      `scenario index: features.length (${scenarioIndex.features.length}) does not match the ` +
+        `${specPages.length} published behaviour Specification page(s) in api/index.json`,
+    );
+  }
+  if (scenarioIndex.features.length !== EXPECTED_SCENARIO_FEATURE_COUNT) {
+    fail(
+      `scenario index: ${scenarioIndex.features.length} feature(s), expected ${EXPECTED_SCENARIO_FEATURE_COUNT} ` +
+        `(pinned to example/features — update EXPECTED_SCENARIO_FEATURE_COUNT if intentional)`,
+    );
+  }
+  const scenarioIds = scenarioIndex.features.map((f) => f.id);
+  const sortedIds = [...scenarioIds].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  if (scenarioIds.join('\n') !== sortedIds.join('\n')) {
+    fail(`scenario index: features are not in code-unit id order (${scenarioIds.join(', ')})`);
+  }
+  if (scenariosText.includes(SCENARIO_DRAFT_FEATURE_ID)) {
+    fail(`scenario index: the draft feature ${SCENARIO_DRAFT_FEATURE_ID} leaked past draft gating`);
+  }
+  const knownFeature = scenarioIndex.features.find((f) => f.id === SCENARIO_KNOWN_FEATURE_ID);
+  if (!knownFeature) fail(`scenario index: ${SCENARIO_KNOWN_FEATURE_ID} is missing`);
+  if (knownFeature.url !== `https://spec-kitty.github.io/doc-kitty/${SCENARIO_KNOWN_FEATURE_ID}/`) {
+    fail(`scenario index: ${SCENARIO_KNOWN_FEATURE_ID} url ${JSON.stringify(knownFeature.url)} does not carry the site base`);
+  }
+  const known = knownFeature.scenarios.find((sc) => sc.name === SCENARIO_KNOWN.name);
+  if (!known) fail(`scenario index: scenario "${SCENARIO_KNOWN.name}" is missing from ${SCENARIO_KNOWN_FEATURE_ID}`);
+  for (const [key, want] of Object.entries(SCENARIO_KNOWN)) {
+    if (JSON.stringify(known[key]) !== JSON.stringify(want)) {
+      fail(`scenario index: "${SCENARIO_KNOWN.name}".${key} is ${JSON.stringify(known[key])}, expected ${JSON.stringify(want)}`);
+    }
+  }
+  if (!Array.isArray(known.steps) || known.steps.length === 0) {
+    fail(`scenario index: "${SCENARIO_KNOWN.name}" has no steps`);
+  }
+  for (const step of known.steps) {
+    if (typeof step.keyword !== 'string' || step.keyword === '' || step.keyword !== step.keyword.trim()) {
+      fail(`scenario index: "${SCENARIO_KNOWN.name}" step keyword ${JSON.stringify(step.keyword)} is not trimmed`);
+    }
+  }
+  const knownFeatureHtml = await readTextOrFail(
+    path.join(distDir, SCENARIO_KNOWN_FEATURE_ID, 'index.html'),
+    `feature page (${SCENARIO_KNOWN_FEATURE_ID})`,
+  );
+  if (!knownFeatureHtml.includes(`id="${SCENARIO_KNOWN.anchor}"`)) {
+    fail(`scenario index: anchor #${SCENARIO_KNOWN.anchor} does not exist on the built ${SCENARIO_KNOWN_FEATURE_ID} page`);
+  }
+  const llmsForScenarios = await readTextOrFail(path.join(distDir, 'llms.txt'), 'llms.txt');
+  if (llmsForScenarios.split('\n').filter((line) => line === SCENARIO_INDEX_LLMS_LINE).length !== 1) {
+    fail(`scenario index: llms.txt does not advertise it exactly once (${JSON.stringify(SCENARIO_INDEX_LLMS_LINE)})`);
+  }
+  ok(
+    `scenario index: valid JSON, ${scenarioIndex.features.length} feature(s) == published Specification pages, ` +
+      `draft absent, "${SCENARIO_KNOWN.name}" → #${SCENARIO_KNOWN.anchor} (exists on page), advertised in llms.txt`,
+  );
 
   // 5) README-as-index — a section README.md served at its directory route.
   const sectionIndexAbs = path.join(distDir, SECTION_INDEX_RELPATH);

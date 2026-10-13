@@ -39,6 +39,10 @@ short endpoint file. This page expands the surfaces the
   - `/api/index.json` — a browsable, structured map of the corpus, sections in
     registry order.
   - `/api/pages/<id>.json` — one page's metadata plus its raw Markdown.
+  - `/api/scenarios.json` (`scenarioIndexRoute`, only on sites with Gherkin
+    feature pages) — every published generated feature page with its scenarios:
+    rule, heading anchor, tags, steps and Examples. `llms.txt` advertises it only
+    when such a page exists. See [Gherkin feature pages](./gherkin-pages.md).
   - Discovery, not RAG: an agent finds the whole corpus from one file and fetches
     clean source for exactly what it needs.
 - **What every surface shares** — publication gating from the

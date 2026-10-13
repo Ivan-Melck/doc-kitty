@@ -29,6 +29,7 @@ import {
 import { DESCRIPTION_MAX } from '../schema.js';
 import { absolute, docsRoot } from './shared.js';
 import { collectDocEntries } from '../docs-index.js';
+import { isScenarioIndexed } from './scenario-index.js';
 
 export interface LlmsTxtRouteOptions {
   title: string;
@@ -88,6 +89,19 @@ export function llmsTxtRoute(options: LlmsTxtRouteOptions): APIRoute {
     const lines: string[] = [`# ${options.title}`, ''];
     if (options.description) lines.push(`> ${options.description}`, '');
     lines.push(`Full machine index: ${absolute(site, '/api/index.json')}`, '');
+    // The scenario index (`scenarioIndexRoute`, ADR-0046) is advertised ONLY when
+    // it has something to list: at least one generated feature page that the
+    // index itself would emit (`isScenarioIndexed` + the section `agent` feeds
+    // filter it applies). A site without Gherkin pages emits no extra line, so
+    // its llms.txt stays byte-identical. Mount the route when `gherkin` is on.
+    if (
+      all.some(
+        (entry) =>
+          isScenarioIndexed(entry.data) && feedsSurface(feeds, sectionOf(entry.slug), 'agent'),
+      )
+    ) {
+      lines.push(`Scenario index: ${absolute(site, '/api/scenarios.json')}`, '');
+    }
 
     // Group by section, preserving the section order rankForAgents produced.
     const sections = new Map<string, typeof ranked>();

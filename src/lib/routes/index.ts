@@ -7,3 +7,5 @@ export type { AgentIndexRouteOptions } from './agent-index.js';
 export { agentPageRoute } from './agent-page.js';
 export { bibliographyRoute } from './bibliography.js';
 export type { BibliographyRouteOptions } from './bibliography.js';
+export { scenarioIndexRoute } from './scenario-index.js';
+export type { ScenarioIndexRouteOptions } from './scenario-index.js';
