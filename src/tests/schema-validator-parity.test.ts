@@ -4,7 +4,13 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import matter from 'gray-matter';
 import { z } from 'zod';
-import { validate, SECTION_TYPE } from '../scripts/validate-frontmatter.mjs';
+import {
+  validate,
+  SECTION_TYPE,
+  GENERATED_BY_STAMPS,
+  isGeneratedPage,
+} from '../scripts/validate-frontmatter.mjs';
+import { GENERATED_BY as GHERKIN_GENERATED_BY } from '../lib/gherkin/feature-core.mjs';
 import { collectDanglingRelated } from '../scripts/check-links.mjs';
 import { docKittyFields } from '../lib/schema.ts';
 
@@ -393,5 +399,109 @@ describe('index-basename + subtypes options do not perturb shape parity (NFR-001
   it('the 5-arg options form is opt-in: the bare 2-arg call (used throughout this suite) is unaffected', () => {
     const data = parse('valid/valid.md');
     expect(validate('valid.md', data)).toEqual(validate('valid.md', data, SECTION_TYPE));
+  });
+});
+
+// ADR-0046 WP07 — gate parity for GENERATED pages. The build schema is lenient on
+// `updated`/`type` for every page; the standalone gate exempts only MACHINE-
+// GENERATED pages from those authored-metadata rules. Recognition is keyed on the
+// `generated.by` MARKER (`doc-kitty/glossary` | `doc-kitty/gherkin`), plus the
+// legacy glossary path rule (the glossary codegen writes no stamp, so its existing
+// output must stay valid unchanged). The marker — not the path — is what makes a
+// Gherkin feature page exempt: the SAME page with its `generated` block removed
+// must fail exactly like an authored page missing `updated`.
+//
+// Mutation evidence (05-verification.md, "Gate parity"): keying the exemption on
+// the path only (`relPath.startsWith('behaviour/')`) turns the "stamp removed",
+// "foreign stamp" and "custom section" cases below red.
+describe('schema/validator parity — generated pages are exempt by marker (ADR-0046)', () => {
+  const FEATURE_REL = 'behaviour/shipping/book-consignment.md';
+
+  /** A deep-ish copy of the fixture's frontmatter with `generated` dropped or replaced. */
+  function withStamp(data: Record<string, unknown>, stamp: unknown): Record<string, unknown> {
+    const copy: Record<string, unknown> = { ...data };
+    if (stamp === undefined) delete copy.generated;
+    else copy.generated = stamp;
+    return copy;
+  }
+
+  it('the gate allow-list carries the gherkin pipeline stamp (single-sourced in feature-core)', () => {
+    expect(GENERATED_BY_STAMPS).toEqual(['doc-kitty/glossary', 'doc-kitty/gherkin']);
+    expect(GENERATED_BY_STAMPS).toContain(GHERKIN_GENERATED_BY);
+  });
+
+  it('a generated feature page WITHOUT `updated` passes the gate, and the build schema accepts it too', () => {
+    const data = parse('generated/feature-page.md');
+    expect(data.updated).toBeUndefined();
+    expect((data.generated as { by: string }).by).toBe('doc-kitty/gherkin');
+    expect(isGeneratedPage(FEATURE_REL, data)).toBe(true);
+    const { problems, warnings, effective } = validate(FEATURE_REL, data);
+    expect(problems).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(effective).toBeUndefined(); // `type`-exempt, like the glossary pages
+    expect(buildRejects(data)).toBe(false);
+  });
+
+  it('a generated feature hub WITHOUT `updated` passes the gate (both arms accept)', () => {
+    const data = parse('generated/feature-hub.md');
+    const { problems } = validate('behaviour/README.md', data, undefined, undefined, {
+      indexBasename: ['README', 'index'],
+    });
+    expect(problems).toEqual([]);
+    expect(buildRejects(data)).toBe(false);
+  });
+
+  it('the SAME page with `generated` removed fails with the standard missing-`updated` error', () => {
+    const data = withStamp(parse('generated/feature-page.md'), undefined);
+    expect(isGeneratedPage(FEATURE_REL, data)).toBe(false);
+    const { problems } = validate(FEATURE_REL, data);
+    // Exactly the error an authored page gets (see the required-field policy block).
+    expect(problems).toEqual(['`updated`: required']);
+    // The build schema stays lenient — presence is the gate-only strict layer.
+    expect(buildRejects(data)).toBe(false);
+  });
+
+  it('a page stamped `generated.by: "someone-else"` is NOT exempt', () => {
+    const data = withStamp(parse('generated/feature-page.md'), {
+      by: 'someone-else',
+      at: 'sha256:aa67f517f6ea',
+    });
+    expect(isGeneratedPage(FEATURE_REL, data)).toBe(false);
+    expect(validate(FEATURE_REL, data).problems).toEqual(['`updated`: required']);
+  });
+
+  it('the exemption follows the marker to a custom section (gherkin.section is configurable)', () => {
+    const data = parse('generated/feature-page.md');
+    const rel = 'specs/shipping/book-consignment.md';
+    expect(isGeneratedPage(rel, data)).toBe(true);
+    expect(validate(rel, data).problems).toEqual([]);
+  });
+
+  it('a generated page that DOES supply `updated` (an `@dk:updated=` tag) is held to its shape', () => {
+    const base = parse('generated/feature-page.md');
+    expect(validate(FEATURE_REL, { ...base, updated: '2026-09-01' }).problems).toEqual([]);
+    const bad = validate(FEATURE_REL, { ...base, updated: 'not-a-date' }).problems;
+    expect(bad.some((p) => p.startsWith('`updated`:'))).toBe(true);
+  });
+
+  it('legacy glossary output (no `generated` stamp) still validates unchanged via the path rule', () => {
+    const hub = parse('generated/glossary-hub.md');
+    const ctx = parse('generated/glossary-context.md');
+    expect(hub.generated).toBeUndefined();
+    expect(ctx.generated).toBeUndefined();
+    expect(isGeneratedPage('glossary/index.md', hub)).toBe(true);
+    expect(isGeneratedPage('glossary/hr/index.md', ctx)).toBe(true);
+    expect(validate('glossary/index.md', hub).problems).toEqual([]);
+    expect(validate('glossary/hr/index.md', ctx).problems).toEqual([]);
+    // The boundary is the `glossary/` segment: the same page elsewhere (e.g. the
+    // AUTHORED `glossary-demo/` folder) is held to the full contract.
+    expect(isGeneratedPage('glossary-demo/hr.md', ctx)).toBe(false);
+    expect(validate('glossary-demo/hr.md', ctx).problems).toEqual(['`updated`: required']);
+  });
+
+  it('a glossary page stamped `doc-kitty/glossary` is exempt anywhere (the marker rule covers both pipelines)', () => {
+    const ctx = { ...parse('generated/glossary-context.md'), generated: { by: 'doc-kitty/glossary', at: 'x' } };
+    expect(isGeneratedPage('vocab/hr.md', ctx)).toBe(true);
+    expect(validate('vocab/hr.md', ctx).problems).toEqual([]);
   });
 });

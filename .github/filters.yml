@@ -30,9 +30,15 @@ code:
   - 'vitest.config.*'
 
 # example_content — deployed example content/assets → doc-sanity + build-example.
+# `example/features/**` is the Gherkin source the build generates
+# `example/docs/behaviour/**` from (ADR-0046): a feature-only PR must run the
+# `validate:features` drift gate (doc-sanity) and the build. The generator code
+# (`src/lib/gherkin/**`, `src/scripts/generate-feature-pages.mjs`) is already
+# `code` (`src/**`), which runs doc-sanity + build-example too.
 example_content:
   - 'example/docs/**'
   - 'example/public/**'
+  - 'example/features/**'
 
 # repo_docs — non-deployed project docs → doc-sanity only.
 repo_docs:

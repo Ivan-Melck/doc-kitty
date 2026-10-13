@@ -117,6 +117,12 @@ jobs:
         run: pnpm validate:links
       - name: Assert the ADR index is regeneration-clean (lockfile check)
         run: pnpm validate:adr-index
+      # Gherkin feature pages (ADR-0046) are generated INTO example/docs/behaviour
+      # by the build; this bare-Node twin plans them from example/features and
+      # fails on any added/changed/stale/authored path, so committed pages can't
+      # drift from their `.feature` sources.
+      - name: Assert the behaviour pages are regeneration-clean
+        run: pnpm validate:features
       - name: Resolve citation catalog (external references)
         run: pnpm validate:catalog
       - name: Markdownlint (docs + example/docs)
