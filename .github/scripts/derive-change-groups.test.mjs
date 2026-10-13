@@ -16,6 +16,9 @@ const CLASSIFY_CASES = [
   ['example/tsconfig.json', 'code'],
   ['example/src/pages/index.astro', 'code'],
   ['src/scripts/check-links.mjs', 'code'],
+  // Gherkin generator code (ADR-0046) is code → runs doc-sanity's validate:features.
+  ['src/lib/gherkin/generate.mjs', 'code'],
+  ['src/scripts/generate-feature-pages.mjs', 'code'],
   ['package.json', 'code'],
   ['pnpm-lock.yaml', 'code'],
   ['pnpm-workspace.yaml', 'code'],
@@ -24,6 +27,8 @@ const CLASSIFY_CASES = [
   // deployed example content.
   ['example/docs/adr/0001.md', 'example_content'],
   ['example/public/logo.svg', 'example_content'],
+  // Gherkin sources the build generates example/docs/behaviour from (ADR-0046).
+  ['example/features/shipping/book-consignment.feature', 'example_content'],
   // non-deployed repo docs (root markdown + docs/agents trees).
   ['docs/architecture/ci-cd-pipeline.md', 'repo_docs'],
   ['README.md', 'repo_docs'],
@@ -71,6 +76,12 @@ const DERIVE_CASES = [
   {
     name: 'example_content → doc-sanity + build-example (no code-quality)',
     paths: ['example/docs/adr/0001.md'],
+    expect: { run_code_quality: false, run_doc_sanity: true, run_build_example: true, primary: 'example_content' },
+    groups: { workflows: false, code: false, example_content: true, repo_docs: false, ignored: false },
+  },
+  {
+    name: 'feature-only (example/features) → doc-sanity + build-example (ADR-0046)',
+    paths: ['example/features/shipping/book-consignment.feature'],
     expect: { run_code_quality: false, run_doc_sanity: true, run_build_example: true, primary: 'example_content' },
     groups: { workflows: false, code: false, example_content: true, repo_docs: false, ignored: false },
   },

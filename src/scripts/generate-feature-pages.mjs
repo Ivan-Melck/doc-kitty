@@ -1,0 +1,200 @@
+#!/usr/bin/env node
+/**
+ * generate-feature-pages.mjs — generate (or drift-check) the Gherkin feature
+ * pages a site's `gherkin` option writes into its docs tree (ADR-0046).
+ *
+ * Usage:
+ *   node src/scripts/generate-feature-pages.mjs \
+ *     --root example --sources features --docs docs --section behaviour \
+ *     --index-basename README,index [--source-root <dir>] \
+ *     [--source-url-prefix <url>] [--check]
+ *
+ *   --root               Site directory every other path is relative to (default: cwd).
+ *   --sources            Comma-separated `.feature` source directories (required).
+ *   --docs               The site's docs directory (default: `docs`).
+ *   --section            Section folder the pages land under (default: `behaviour`).
+ *   --index-basename     Comma-separated index basename(s); the hub is `<first>.md`
+ *                        (default: `README`).
+ *   --source-root        Directory `sources[0].resource` paths are relative to
+ *                        (default: `--root`, matching the integration's site root).
+ *   --source-url-prefix  Optional browse-URL prefix for `sources[0].resource`.
+ *   --check              Compare in memory, write nothing; exit 1 on any drift.
+ *
+ * WHY a bare-Node twin of the build step: `astro.config.mjs` cannot be evaluated
+ * outside Astro, so CI's build-free doc-sanity lane needs its own entry point.
+ * It calls the SAME `loadFeatures` → `planFeaturePages` / `generateFeaturePages`
+ * the integration calls, so the bytes it compares are the bytes the build
+ * writes (parity by construction). The flags mirror the astro.config option;
+ * a separate test keeps the two equal.
+ *
+ * `--check` is a lockfile-style gate (cf. `generate-adr-index.mjs --check`): it
+ * lists every planned page that is missing (`added`) or differs (`changed`),
+ * every owned page no source produces any more (`stale`), and every
+ * non-generated file inside the section (`authored` — a generated section has
+ * a single owner). Exit codes: 0 in sync, 1 drift or any `[dk-gherkin]` error
+ * (missing source dir, parse error, output collision, authored intrusion).
+ */
+import { realpathSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { loadFeatures } from '../lib/gherkin/load.mjs';
+import {
+  DEFAULT_GHERKIN_SECTION,
+  diffFeaturePages,
+  generateFeaturePages,
+  planFeaturePages,
+} from '../lib/gherkin/generate.mjs';
+
+/** The diff kinds, in the order they are reported. */
+const DRIFT_KINDS = /** @type {const} */ (['added', 'changed', 'stale', 'authored']);
+
+/** Split a comma list, trimming and dropping empties. */
+function list(value) {
+  return String(value ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Parse argv into resolved options. Throws a usage error on an unknown flag or
+ * a flag missing its value.
+ *
+ * @param {string[]} argv `process.argv`-shaped (the first two entries are skipped).
+ */
+export function parseArgs(argv) {
+  const raw = {
+    root: '.',
+    sources: '',
+    docs: 'docs',
+    section: DEFAULT_GHERKIN_SECTION,
+    indexBasename: 'README',
+    sourceRoot: undefined,
+    sourceUrlPrefix: undefined,
+    check: false,
+  };
+  /** @type {Record<string, keyof typeof raw>} */
+  const valued = {
+    '--root': 'root',
+    '--sources': 'sources',
+    '--docs': 'docs',
+    '--section': 'section',
+    '--index-basename': 'indexBasename',
+    '--source-root': 'sourceRoot',
+    '--source-url-prefix': 'sourceUrlPrefix',
+  };
+  const args = argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const flag = args[i];
+    if (flag === '--check') {
+      raw.check = true;
+      continue;
+    }
+    const key = valued[flag];
+    if (!key) throw new Error(`unknown argument: ${flag}`);
+    const value = args[i + 1];
+    if (value === undefined || value.startsWith('--')) throw new Error(`${flag} needs a value`);
+    raw[key] = value;
+    i++;
+  }
+  const sources = list(raw.sources);
+  if (sources.length === 0) throw new Error('--sources is required (comma-separated directories)');
+
+  const root = path.resolve(raw.root);
+  const docsRoot = path.resolve(root, raw.docs);
+  return {
+    root,
+    sources,
+    docsRoot,
+    section: raw.section,
+    outDir: path.join(docsRoot, raw.section),
+    indexBasename: list(raw.indexBasename),
+    sourceRoot: raw.sourceRoot === undefined ? root : path.resolve(root, raw.sourceRoot),
+    sourceUrlPrefix: raw.sourceUrlPrefix,
+    check: raw.check,
+  };
+}
+
+/**
+ * Run the CLI. Returns the process exit code instead of exiting, so tests can
+ * drive it in-process if they want to.
+ *
+ * @param {string[]} argv
+ * @returns {number}
+ */
+export function main(argv) {
+  let opts;
+  try {
+    opts = parseArgs(argv);
+  } catch (err) {
+    console.error(`✖ generate-feature-pages: ${/** @type {Error} */ (err).message}`);
+    return 1;
+  }
+  const warn = (/** @type {string} */ msg) => console.warn(`⚠ ${msg}`);
+  const genOpts = {
+    docsRoot: opts.docsRoot,
+    outDir: opts.outDir,
+    section: opts.section,
+    indexBasename: opts.indexBasename,
+    sourceRoot: opts.sourceRoot,
+    sourceUrlPrefix: opts.sourceUrlPrefix,
+    warn,
+  };
+  // cwd-relative when the section is under cwd (the `pnpm validate:features`
+  // case), else absolute — never a `../../..` chain.
+  const fromCwd = path.relative(process.cwd(), opts.outDir);
+  const outLabel = fromCwd === '' ? '.' : fromCwd.startsWith('..') ? opts.outDir : fromCwd;
+
+  try {
+    const model = loadFeatures({ sources: opts.sources, root: opts.root, warn });
+
+    if (opts.check) {
+      const diff = diffFeaturePages(planFeaturePages(model, genOpts), opts.outDir);
+      const lines = DRIFT_KINDS.flatMap((kind) => diff[kind].map((rel) => `  ${kind}: ${rel}`));
+      if (lines.length > 0) {
+        console.error(
+          `✖ ${outLabel} is out of sync with the Gherkin sources (${lines.length} path(s)):\n` +
+            `${lines.join('\n')}\n` +
+            '  Run the same command without `--check` (e.g. `pnpm generate:features`) and commit ' +
+            'the result; move any authored file out of the generated section.',
+        );
+        return 1;
+      }
+      console.log(
+        `✓ ${outLabel} is regeneration-clean (${model.files.length} feature file(s) in sync).`,
+      );
+      return 0;
+    }
+
+    const { written, unchanged, removed } = generateFeaturePages(model, genOpts);
+    console.log(
+      `✓ ${outLabel}: ${model.files.length} feature file(s) → ` +
+        `${written.length} written, ${unchanged.length} unchanged, ${removed.length} removed.`,
+    );
+    for (const rel of written) console.log(`  written: ${rel}`);
+    for (const rel of removed) console.log(`  removed: ${rel}`);
+    return 0;
+  } catch (err) {
+    // `[dk-gherkin]` errors (missing source dir, parse errors, collisions,
+    // authored intrusion) already carry their own prefix and location.
+    console.error(`✖ ${/** @type {Error} */ (err).message}`);
+    return 1;
+  }
+}
+
+// Run the CLI only when invoked directly, so the module can be imported by tests.
+// CLI guard. Compare against the REAL path of argv[1]: when the package is
+// installed behind a symlink (pnpm's node_modules, or a node_modules/.bin shim),
+// import.meta.url is the resolved path while argv[1] keeps the symlink path, so a
+// plain comparison would never match and the gate would exit 0 having done nothing.
+function invokedDirectly() {
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1] ?? '')).href;
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
+  process.exitCode = main(process.argv);
+}
