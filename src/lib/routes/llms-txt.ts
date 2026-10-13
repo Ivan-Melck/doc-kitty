@@ -29,7 +29,7 @@ import {
 import { DESCRIPTION_MAX } from '../schema.js';
 import { absolute, docsRoot } from './shared.js';
 import { collectDocEntries } from '../docs-index.js';
-import { isScenarioIndexed } from './scenario-index.js';
+import { isScenarioIndexed } from './scenario-index-filter.js';
 
 export interface LlmsTxtRouteOptions {
   title: string;

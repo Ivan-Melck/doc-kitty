@@ -97,10 +97,21 @@ describe('example build surfaces the unresolved-collision warning (NFR-007 / R-2
         rmSync(new URL(`../../${dir}`, import.meta.url), { recursive: true, force: true });
       }
 
+      // Vitest's OWN process env carries a `BASE_URL` variable (it mirrors
+      // Vite's client `import.meta.env.BASE_URL` for Node-environment tests,
+      // defaulting to `/`). Passing `process.env` straight through leaks it into
+      // this REAL `astro build` child, where it silently overrides the site's
+      // configured `base` (`/doc-kitty`) for every SSR-rendered
+      // `import.meta.env.BASE_URL` read — and this build writes the SHARED
+      // `example/dist`, so `pnpm assert:artifacts` then fails after `pnpm test`.
+      // Strip it so the child computes its own base from
+      // `example/astro.config.mjs` (mirrors `example-adopter.test.ts`).
+      const childEnv = { ...process.env };
+      delete childEnv.BASE_URL;
       const result = spawnSync('pnpm', ['--filter', 'example', 'build'], {
         cwd: REPO_ROOT,
         encoding: 'utf8',
-        env: process.env,
+        env: childEnv,
       });
 
       // The build must SUCCEED — the collision is a warning, never fatal.
@@ -114,6 +125,15 @@ describe('example build surfaces the unresolved-collision warning (NFR-007 / R-2
         `expected exactly ${OFFENDING_PAGES.length} pinned collision warnings ` +
           `(one per page in OFFENDING_PAGES); stderr:\n${result.stderr}`,
       ).toBe(OFFENDING_PAGES.length);
+
+      // This build writes the SHARED `example/dist` that `pnpm assert:artifacts`
+      // checks after `pnpm test`, so it must be the site's real (base-prefixed)
+      // output — not one built under the test runner's environment.
+      const artifacts = spawnSync('node', ['src/scripts/assert-build-artifacts.mjs', 'example/dist'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      });
+      expect(artifacts.status, `${artifacts.stdout}${artifacts.stderr}`).toBe(0);
     },
     180_000,
   );

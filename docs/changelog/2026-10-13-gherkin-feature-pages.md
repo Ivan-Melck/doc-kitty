@@ -21,10 +21,11 @@ related:
 A site can now publish its Gherkin `.feature` files as documentation. Setting
 `gherkin: { sources: ['features'] }` in `defineDocKittyIntegrations` parses each
 feature once with `@cucumber/gherkin` and generates one `kind: Specification`
-page per feature, plus a hub per directory, into `docs/behaviour/`. The pages ride
-the existing pipeline, so they reach the sidebar, sitemap, RSS, `llms.txt`, the
-agent API and glossary auto-linking with no new plugins. With the option unset,
-the build is byte-identical to before. See
+page per feature, plus a hub per directory that holds a published feature, into
+`docs/behaviour/`. The pages ride the existing pipeline, so they reach the
+sidebar, sitemap, RSS, `llms.txt`, the agent API and glossary auto-linking with no
+new plugins. With the option unset, the build output is unchanged apart from a
+TOC target-size fix in `toc-rail.css` that every site gets (below). See
 [ADR-0046](../adr/0046-gherkin-feature-pages.md) and the
 [architecture page](../architecture/gherkin-pages.md).
 
@@ -51,6 +52,26 @@ the build is byte-identical to before. See
   shipped as the `dockitty-generate-feature-pages` binary, regenerates the pages or,
   with `--check`, fails on any added, changed, stale or authored path. CI runs it
   as `pnpm validate:features`.
+- **A scenario index for agents.** The new `scenarioIndexRoute` export from
+  `@spec-kitty/doc-toolkit/routes`, mounted at `/api/scenarios.json`, lists every
+  published feature page with its rules, scenarios, anchors, tags, steps and
+  examples tables, re-parsed from the `.feature` source. Pass it the same
+  `sourceRoot` and `sourceUrlPrefix` as the `gherkin` option. `llms.txt` gains a
+  `Scenario index:` line only when at least one published feature page exists, so
+  other sites' `llms.txt` is unchanged.
+- **Drafts stay out of hubs.** A `@wip` or `@dk:status=draft` feature still gets
+  its page, but no hub lists it, and a directory holding only drafts gets no hub
+  at all, so its name isn't published either.
+
+## Changes for every site
+
+The desktop "On this page" links now have a 24px minimum target (WCAG 2.5.8,
+axe `target-size`): `toc-rail.css` gives each link `min-height: 24px`. Starlight's
+links were about 23px tall, which a densely nested TOC such as a feature page's
+Rule → Scenario outline fails. The rule applies to every site with a TOC, with or
+without the `gherkin` option, so visual baselines of pages with a TOC shift
+slightly. Regenerate them with the "Update a11y baselines" workflow
+(`update-a11y-baselines.yml`).
 
 ## Limits
 

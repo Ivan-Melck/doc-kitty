@@ -297,9 +297,12 @@ export function parseMetadataTags(tags, { file } = {}) {
         continue;
       }
       if (key === 'status' && !isStatusSlug(value)) {
+        // Rejected ONLY for its case (`Draft`): name the value that would pass.
+        const lower = value.toLowerCase();
+        const hint = isStatusSlug(lower) ? `; did you mean @dk:status=${lower}?` : '';
         warnings.push(
           `${PREFIX} ${loc} invalid @dk:status=${value} (expected a lower-case slug such as ` +
-            'active, draft or in-review); ignored',
+            `active, draft or in-review); ignored${hint}`,
         );
         continue;
       }

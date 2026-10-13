@@ -51,7 +51,8 @@ gates (ADR-0026's finding AS-6).
 ## Decision
 
 1. **Opt-in preset.** `defineDocKittyIntegrations({ gherkin: { sources, section? } })`.
-   Absent means no integration and byte-identical output. Unlike the glossary,
+   Absent means no integration and unchanged pages, routes and config (the
+   release's TOC target-size CSS is a separate, site-wide accessibility fix). Unlike the glossary,
    activation is an explicit option, not presence, because `.feature` files have
    no canonical location.
 2. **Parse once with the official parser.** `@cucumber/gherkin` +
@@ -59,7 +60,7 @@ gates (ADR-0026's finding AS-6).
    errors are build-fatal, listing every `file:line:col`.
 3. **Codegen into the collection (the ADR-0026 seam).** During `astro:config:setup`,
    write one page per feature to `<docsDir>/<section>/<path>.md`, plus one hub
-   per directory, named with the first configured `indexBasename`. Generated
+   per directory with a non-draft feature, named with the first configured `indexBasename`. Generated
    pages are committed. A `--check` drift gate keeps them honest.
 4. **Single ownership.** Generated pages carry
    `generated: { by: "doc-kitty/gherkin", at: "sha256:<source hash>" }`. The

@@ -43,4 +43,5 @@ exist yet and say where it should live.
   each of its scenarios: `rule`, `anchor` (append `#<anchor>` to the page `url`),
   source `line`, own `tags`, `outline`, `steps` and outline `examples`. Query it
   for "which scenarios cover X" instead of scraping the pages. `llms.txt` carries
-  a `Scenario index:` line when it exists. Drafts are not listed.
+  a `Scenario index:` line when at least one published generated feature page
+  exists. Drafts are not listed.
