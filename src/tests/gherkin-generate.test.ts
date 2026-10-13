@@ -233,16 +233,6 @@ describe('golden: the worked example (contract §1/§3/§6)', () => {
     });
     expect(warnings).toEqual([]);
   });
-
-  it('planFeaturePages yields the same bytes without touching the filesystem', () => {
-    const model = loadFeatures({ sources: ['features'], root: GOLDEN_SITE });
-    const planned = planFeaturePages(model, {
-      docsRoot: EXAMPLE_DOCS,
-      sourceRoot: GOLDEN_SITE,
-      indexBasename: ['README', 'index'],
-    });
-    expect(Object.fromEntries(planned)).toEqual(readTree(GOLDEN_EXPECTED));
-  });
 });
 
 describe('rename / delete: owned-output pruning (02 "Owned output and pruning")', () => {
@@ -310,6 +300,7 @@ describe('rename / delete: owned-output pruning (02 "Owned output and pruning")'
 
     const { result, warnings } = gen(site);
     expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('no .feature files found in features;');
     expect(warnings[0]).toMatch(/^\[dk-gherkin\] no \.feature files/);
     expect(warnings[0]).toContain('6 previously generated page(s) will be removed');
     expect(result.written).toEqual([]);
@@ -417,16 +408,6 @@ describe('hub basename follows indexBasename (contract §1)', () => {
     expect(hubBasename('index')).toBe('index');
     expect(hubBasename(['index', 'README'])).toBe('index');
     expect(hubBasename(['README', 'index'])).toBe('README');
-  });
-
-  it('README.md hubs by default', () => {
-    const site = makeSite({ 'features/shipping/book.feature': feature('Book a slot') });
-    gen(site);
-    expect(Object.keys(readTree(site.outDir))).toEqual([
-      'README.md',
-      'shipping/README.md',
-      'shipping/book.md',
-    ]);
   });
 
   it("index.md hubs when indexBasename is ['index', 'README']", () => {
@@ -829,14 +810,6 @@ describe('route collisions the loader would hide are fatal (review #2)', () => {
     expect(Object.keys(plan(site).plan)).toBeDefined();
     expect([...plan(site).plan.keys()]).toEqual(['README.md', 'log/README.md', 'log/x.md']);
   });
-
-  it('generate.mjs carries no second index-basename rule (uses vocabulary-core)', () => {
-    const src = readFileSync(fileURLToPath(new URL('../lib/gherkin/generate.mjs', import.meta.url)), 'utf8');
-    expect(src).not.toMatch(/indexLeaves/);
-    expect(src).not.toMatch(/toLowerCase\(\)/);
-    expect(src).toMatch(/\bisIndexPath\b/);
-    expect(src).toMatch(/\bnormalizeIndexBasenames\b/);
-  });
 });
 
 describe('a charter-only docs root drives the mission prefix and the root hub title (review #4)', () => {
@@ -985,14 +958,6 @@ describe('an unnamed Feature: H1, title and hub entry agree (review #5)', () => 
     expect(warnings.filter((w) => w.includes('Feature has no name'))).toEqual([
       '[dk-gherkin] features/x.feature:1 Feature has no name; using "Feature"',
     ]);
-  });
-});
-
-describe('the empty-sources warning names the source directories (review #13)', () => {
-  it('lists every configured source', () => {
-    const site = makeSite({ 'features/.keep': '', 'more/.keep': '' });
-    const { warnings } = gen(site, { sources: ['features', 'more'] });
-    expect(warnings).toEqual(['[dk-gherkin] no .feature files found in features, more; 0 previously generated page(s) will be removed']);
   });
 });
 

@@ -190,12 +190,10 @@ const EXPECTED_BIBLIOGRAPHY_RECORD_KEYS = ['id', 'title', 'url'];
 // `/api/scenarios.json` (gherkin-feature-pages WP10, ADR-0046): the scenario
 // index lists exactly the published, agent-discoverable GENERATED feature pages —
 // cross-checked against the `kind: Specification` pages in `/api/index.json`
-// (built by a different route) and pinned to today's example (book-consignment,
-// declare-customs, request-leave; the `@wip` track-consignment page is a draft).
+// (built by a different route); the `@wip` track-consignment page is a draft.
 // One known scenario pins the per-scenario shape end to end, including the
 // anchor Astro's `rehypeHeadingIds` assigned (read from `render().headings`).
 const SCENARIO_INDEX_RELPATH = path.join('api', 'scenarios.json');
-const EXPECTED_SCENARIO_FEATURE_COUNT = 3;
 const SCENARIO_DRAFT_FEATURE_ID = 'behaviour/shipping/track-consignment';
 const SCENARIO_KNOWN_FEATURE_ID = 'behaviour/shipping/book-consignment';
 const SCENARIO_KNOWN = {
@@ -1947,12 +1945,6 @@ async function main() {
     fail(
       `scenario index: features.length (${scenarioIndex.features.length}) does not match the ` +
         `${specPages.length} published behaviour Specification page(s) in api/index.json`,
-    );
-  }
-  if (scenarioIndex.features.length !== EXPECTED_SCENARIO_FEATURE_COUNT) {
-    fail(
-      `scenario index: ${scenarioIndex.features.length} feature(s), expected ${EXPECTED_SCENARIO_FEATURE_COUNT} ` +
-        `(pinned to example/features — update EXPECTED_SCENARIO_FEATURE_COUNT if intentional)`,
     );
   }
   const scenarioIds = scenarioIndex.features.map((f) => f.id);

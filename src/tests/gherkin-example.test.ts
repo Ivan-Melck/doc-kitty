@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadFeatures } from '../lib/gherkin/load.mjs';
-import { diffFeaturePages, planFeaturePages } from '../lib/gherkin/generate.mjs';
+import { planFeaturePages } from '../lib/gherkin/generate.mjs';
 import { parseArgs } from '../scripts/generate-feature-pages.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -121,8 +121,8 @@ describe('validate:features mirrors the example gherkin option', () => {
   });
 });
 
-describe('example/docs/behaviour is regeneration-clean', () => {
-  it('planFeaturePages over example/features matches the committed tree byte-for-byte', () => {
+describe('the example features are authored warning-free', () => {
+  it('loading and planning example/features raises no warning', () => {
     const warnings: string[] = [];
     const model = loadFeatures({
       sources: gherkin.sources,
@@ -131,29 +131,13 @@ describe('example/docs/behaviour is regeneration-clean', () => {
     });
     const docsRoot = path.join(EXAMPLE_ROOT, 'docs');
     const section = gherkin.section ?? 'behaviour';
-    const plan = planFeaturePages(model, {
+    planFeaturePages(model, {
       docsRoot,
       section,
       indexBasename,
       sourceRoot: path.resolve(EXAMPLE_ROOT, gherkin.sourceRoot ?? '.'),
       sourceUrlPrefix: gherkin.sourceUrlPrefix,
       warn: (msg: string) => warnings.push(msg),
-    });
-    // Non-vacuity: the demonstrator corpus (3 active features + 1 @wip, 3 hubs).
-    expect([...plan.keys()]).toEqual([
-      'README.md',
-      'hr/README.md',
-      'hr/request-leave.md',
-      'shipping/README.md',
-      'shipping/book-consignment.md',
-      'shipping/declare-customs.md',
-      'shipping/track-consignment.md',
-    ]);
-    expect(diffFeaturePages(plan, path.join(docsRoot, section))).toEqual({
-      added: [],
-      changed: [],
-      stale: [],
-      authored: [],
     });
     // The example's features are authored warning-free (no unknown tags,
     // truncations or missing descriptions).

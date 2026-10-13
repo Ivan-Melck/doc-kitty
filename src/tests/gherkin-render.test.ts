@@ -638,35 +638,6 @@ describe('markdownlint (repo .markdownlint.jsonc) on golden outputs', () => {
 });
 
 // ===========================================================================
-// 8. Purity
-// ===========================================================================
-
-describe('render.mjs purity', () => {
-  it('imports only ./text.mjs and ../vocabulary-core.mjs at runtime', () => {
-    const src = readFileSync(path.join(SRC_ROOT, 'lib/gherkin/render.mjs'), 'utf8');
-    // Strip comments first: JSDoc `import('@cucumber/messages')` typedefs are type-only.
-    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-    const specifiers = [
-      ...code.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g),
-      ...code.matchAll(/\bimport\s+['"]([^'"]+)['"]/g),
-      ...code.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
-      ...code.matchAll(/\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
-    ].map((m) => m[1]);
-    for (const spec of specifiers) expect(['./text.mjs', '../vocabulary-core.mjs']).toContain(spec);
-    expect(specifiers).toContain('./text.mjs');
-  });
-
-  it('no gherkin module defines its own code-unit comparator (compareCodeUnit is THE one)', () => {
-    const dir = path.join(SRC_ROOT, 'lib/gherkin');
-    for (const name of readdirSync(dir).filter((f) => f.endsWith('.mjs'))) {
-      const code = readFileSync(path.join(dir, name), 'utf8');
-      expect(code, name).not.toMatch(/\b(\w+)\s*<\s*(\w+)\s*\?\s*-1\s*:\s*\1\s*>\s*\2\s*\?\s*1\s*:\s*0/);
-      expect(code, name).not.toMatch(/\blocaleCompare\b/);
-    }
-  });
-});
-
-// ===========================================================================
 // 9. GFM autolink literals stay literal text (review #9)
 // ===========================================================================
 

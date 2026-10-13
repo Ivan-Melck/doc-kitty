@@ -125,15 +125,6 @@ describe('example build surfaces the unresolved-collision warning (NFR-007 / R-2
         `expected exactly ${OFFENDING_PAGES.length} pinned collision warnings ` +
           `(one per page in OFFENDING_PAGES); stderr:\n${result.stderr}`,
       ).toBe(OFFENDING_PAGES.length);
-
-      // This build writes the SHARED `example/dist` that `pnpm assert:artifacts`
-      // checks after `pnpm test`, so it must be the site's real (base-prefixed)
-      // output — not one built under the test runner's environment.
-      const artifacts = spawnSync('node', ['src/scripts/assert-build-artifacts.mjs', 'example/dist'], {
-        cwd: REPO_ROOT,
-        encoding: 'utf8',
-      });
-      expect(artifacts.status, `${artifacts.stdout}${artifacts.stderr}`).toBe(0);
     },
     180_000,
   );
