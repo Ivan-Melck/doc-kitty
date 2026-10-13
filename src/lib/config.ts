@@ -32,6 +32,7 @@ import {
   registryToSidebar,
   sectionFeeds,
   feedsSurface,
+  BUILD_GENERATED_SECTION_IDS,
 } from './sections.js';
 import { resolveTheme, DEFAULT_TOKEN_SHEET, type DocKittyTheme } from './theme.js';
 import { docKittyManifest, THEME_CSS_MODULE_ID } from './manifest.js';
@@ -76,6 +77,8 @@ import {
   serializeDefinitionsPayload,
   glossaryDefinitions,
 } from './glossary/definitions-payload.js';
+import { GHERKIN_LOG_PREFIX, loadFeatures } from './gherkin/load.mjs';
+import { DEFAULT_GHERKIN_SECTION, generateFeaturePages } from './gherkin/generate.mjs';
 
 /**
  * Internal cross-boundary signal (integration → standalone routes), NOT a public
@@ -149,6 +152,51 @@ export interface DocKittyOptions {
    * on for the example.
    */
   markua?: boolean;
+  /**
+   * Opt-in Gherkin feature pages (ADR-0046). **Default off**, the byte-identical
+   * twin of `diagrams: false`. With it absent the integrations array carries ZERO
+   * Gherkin cost: no `doc-kitty:gherkin` integration, no markdown plugins (none are
+   * ever added; the generated pages are plain Markdown and ride the existing
+   * stack), and the registry sidebar's `generatedIds` stay the default seed. Set it
+   * to walk `sources` for `*.feature` files in `astro:config:setup` and codegen one
+   * `kind: Specification` page per feature (plus directory hubs) into
+   * `<docsDir>/<section>/`, before the content-layer glob runs.
+   *
+   * Why an explicit option and NOT presence detection like the glossary: the
+   * glossary has ONE canonical file (`.contextive/definitions.yaml`), so its
+   * presence is an unambiguous signal. `.feature` files have no canonical location
+   * (`features/`, `tests/features/`, `src/test/resources/…`), so presence cannot be
+   * inferred safely; the consumer names the directories.
+   *
+   * Turning it OFF (removing the option) FREEZES the committed pages rather than
+   * deleting them: with no integration registered nothing prunes `<section>/`, so
+   * the last generated output keeps rendering as ordinary content until it is
+   * deleted by hand. Only an active run removes pages whose source is gone.
+   *
+   * Misconfiguration is build-fatal (`[dk-gherkin]` errors): `sources` must be a
+   * non-empty string array, `section` a single safe path segment that is not
+   * another generator's section (e.g. `glossary`), and a malformed `.feature`
+   * fails `config:setup` with `file:line:col`.
+   */
+  gherkin?: {
+    /** Source directories, relative to the site root (`process.cwd()`), walked for `*.feature`. */
+    sources: string[];
+    /** Section id (folder under `docsDir`) the pages are generated into. Default `behaviour`. */
+    section?: string;
+    /**
+     * Optional repo browse-URL prefix (e.g. `https://github.com/o/r/blob/main/`),
+     * prepended verbatim to the `sourceRoot`-relative source path to form each
+     * page's `sources[0].resource` link. Omitted → the bare relative path.
+     */
+    sourceUrlPrefix?: string;
+    /**
+     * Directory the reported source paths (`sources:` frontmatter, the agent API)
+     * are relative to, itself relative to the site root. Default: the site root
+     * (`process.cwd()`). Set `'..'` when the site lives in a sub-package and
+     * `sourceUrlPrefix` points at the repo root.
+     */
+    sourceRoot?: string;
+  };
   /**
    * The section-index basename(s) (FR-001/FR-002, D-01). Defaults to
    * `"README"` only — byte-identical to today's behaviour (NFR-003). MUST
@@ -261,6 +309,7 @@ function topLevelContentDirs(docsRoot: string): string[] {
  */
 function registrySidebar(
   docsDir: string,
+  gherkinSection?: string,
 ): StarlightUserConfig['sidebar'] | undefined {
   const docsRoot = path.resolve(process.cwd(), docsDir);
   const registry = resolveSectionRegistry(docsRoot);
@@ -274,9 +323,22 @@ function registrySidebar(
   // `directoryPrefix` is the docsDir itself: routes' `filePath` is
   // `<docsDir>/<id>/…` (astro-root-relative, un-stripped — Starlight assumes
   // `src/content/docs`), so the autogenerate directory must carry the same prefix.
-  const groups = registryToSidebar(registry, topLevelContentDirs(docsRoot), {
-    directoryPrefix: docsDir,
-  });
+  //
+  // With the opt-in gherkin seam on, its (configurable) section is build-generated
+  // too: `doc-kitty:gherkin` writes `<docsDir>/<section>/**` in config:setup, AFTER
+  // this snapshot. It is appended to the seed at call time (not to the constant,
+  // since the id is per-site), so a first build with no committed output does not
+  // warn. With gherkin off the call is exactly the pre-gherkin one (default seed).
+  const groups = registryToSidebar(
+    registry,
+    topLevelContentDirs(docsRoot),
+    gherkinSection === undefined
+      ? { directoryPrefix: docsDir }
+      : {
+          directoryPrefix: docsDir,
+          generatedIds: [...BUILD_GENERATED_SECTION_IDS, gherkinSection],
+        },
+  );
   return groups as unknown as StarlightUserConfig['sidebar'];
 }
 
@@ -1088,6 +1150,126 @@ function glossaryIntegration(docsDir: string, base: string): AstroIntegration {
   };
 }
 
+/** The `gherkin` option with its defaults applied (see {@link resolveGherkinOptions}). */
+interface ResolvedGherkinOptions {
+  sources: string[];
+  section: string;
+  sourceUrlPrefix?: string;
+  /** Site-root-relative, as configured (default `'.'`); resolved against cwd in the hook. */
+  sourceRoot: string;
+}
+
+/**
+ * Validate + default the `gherkin` option EAGERLY, at `defineDocKittyIntegrations`
+ * time, so a misconfiguration fails before any hook runs (house posture: config
+ * errors are build-fatal and name the feature). Throws a `[dk-gherkin]` Error for:
+ *  - `sources` that is not a non-empty array of non-empty strings;
+ *  - a `section` that is not ONE safe path segment (empty, `.`/`..`, a dot-folder,
+ *    or containing `/` or `\`), since it becomes `<docsDir>/<section>` and the
+ *    generator prunes inside it;
+ *  - a `section` that names a reserved folder (`_meta`, the registry's home) or
+ *    ANOTHER generator's section (`BUILD_GENERATED_SECTION_IDS`, i.e. `glossary`):
+ *    a generated section has a single owner, and the two generators would fight.
+ *    A collision with an AUTHORED folder is caught later by the generator itself
+ *    (it refuses to write into a directory holding non-generated files).
+ */
+function resolveGherkinOptions(
+  raw: NonNullable<DocKittyOptions['gherkin']>,
+): ResolvedGherkinOptions {
+  const { sources, section = DEFAULT_GHERKIN_SECTION, sourceUrlPrefix, sourceRoot = '.' } = raw;
+  if (
+    !Array.isArray(sources) ||
+    sources.length === 0 ||
+    sources.some((s) => typeof s !== 'string' || s.trim() === '')
+  ) {
+    throw new Error(
+      `${GHERKIN_LOG_PREFIX} gherkin.sources must be a non-empty array of directory paths ` +
+        `(relative to the site root); got ${JSON.stringify(sources)}`,
+    );
+  }
+  if (
+    typeof section !== 'string' ||
+    section === '' ||
+    section.startsWith('.') ||
+    /[/\\]/.test(section)
+  ) {
+    throw new Error(
+      `${GHERKIN_LOG_PREFIX} gherkin.section must be a single folder name under the docs dir ` +
+        `(no '/', '\\', '..' or leading '.'); got ${JSON.stringify(section)}`,
+    );
+  }
+  if (section === '_meta' || BUILD_GENERATED_SECTION_IDS.includes(section)) {
+    throw new Error(
+      `${GHERKIN_LOG_PREFIX} gherkin.section ${JSON.stringify(section)} is reserved ` +
+        `(owned by another generator or the section registry); choose another section id`,
+    );
+  }
+  if (sourceUrlPrefix !== undefined && typeof sourceUrlPrefix !== 'string') {
+    throw new Error(`${GHERKIN_LOG_PREFIX} gherkin.sourceUrlPrefix must be a string`);
+  }
+  if (typeof sourceRoot !== 'string' || sourceRoot === '') {
+    throw new Error(`${GHERKIN_LOG_PREFIX} gherkin.sourceRoot must be a non-empty path string`);
+  }
+  return {
+    sources: [...sources],
+    section,
+    ...(sourceUrlPrefix !== undefined ? { sourceUrlPrefix } : {}),
+    sourceRoot,
+  };
+}
+
+/**
+ * The opt-in Gherkin feature-page seam (ADR-0046), registered ONLY when
+ * `defineDocKittyIntegrations({ gherkin: {…} })` is set. It adds NO markdown
+ * plugins: its single `astro:config:setup` hook (the glossary's generate-before-
+ * glob seam — the content-layer `sync` runs after every config hook) does
+ *   (a) `loadFeatures`: walk + parse every `*.feature` under `sources` (resolved
+ *       against the site root, `process.cwd()`, like the glossary's root) exactly
+ *       once. A malformed file throws ONE `[dk-gherkin] <path>:<line>:<col> …`
+ *       Error; it is deliberately NOT caught, so the build fails.
+ *   (b) `generateFeaturePages`: codegen into `<docsDir>/<section>/**`. The writer
+ *       is deterministic and only rewrites changed bytes, so the dev-server restart
+ *       triggered by (c) regenerates identically and never loops; stale OWNED pages
+ *       are pruned, and an AUTHORED file in the section is fatal.
+ *   (c) `addWatchFile` for every loaded source, in model (sorted) order, so editing
+ *       a `.feature` in dev restarts the server and re-runs (a)–(b). A NEW file is
+ *       only picked up on the next restart (documented limit).
+ * One `[dk-gherkin]` info line reports the counts (when the logger supports it).
+ */
+function gherkinIntegration(
+  opts: ResolvedGherkinOptions,
+  docsDir: string,
+  indexBasename: IndexBasenameOption | undefined,
+): AstroIntegration {
+  return {
+    name: 'doc-kitty:gherkin',
+    hooks: {
+      'astro:config:setup': ({ addWatchFile, logger }) => {
+        const root = process.cwd();
+        const warn = (message: string) => logger.warn(message);
+        const model = loadFeatures({ sources: opts.sources, root, warn });
+        const docsRoot = path.resolve(root, docsDir);
+        const { written, unchanged, removed } = generateFeaturePages(model, {
+          docsRoot,
+          outDir: path.resolve(docsRoot, opts.section),
+          section: opts.section,
+          indexBasename,
+          sourceRoot: path.resolve(root, opts.sourceRoot),
+          sourceUrlPrefix: opts.sourceUrlPrefix,
+          warn,
+        });
+        for (const file of model.files) addWatchFile(file.absPath);
+        if (typeof logger.info === 'function') {
+          logger.info(
+            `${GHERKIN_LOG_PREFIX} ${model.files.length} feature file(s) → ${docsDir}/${opts.section}: ` +
+              `${written.length} written, ${unchanged.length} unchanged, ${removed.length} removed`,
+          );
+        }
+      },
+    },
+  };
+}
+
 /**
  * The SINGLE `remark-directive` owner (ADR-0030 D-07). Both the glossary (its
  * `:term` text-directive) and Markua (its `containerDirective` asides/callouts +
@@ -1489,8 +1671,15 @@ export function defineDocKittyIntegrations(options: DocKittyOptions) {
     diagrams = false,
     markua = false,
     indexBasename,
+    gherkin,
     starlight: overrides,
   } = options;
+
+  // Opt-in gherkin seam (ADR-0046): validated + defaulted EAGERLY here, so a bad
+  // option throws a `[dk-gherkin]` Error at config time, before any hook runs.
+  // `undefined` when the option is absent — every gherkin branch below then
+  // contributes nothing (byte-identical array, sidebar call and corpus).
+  const gherkinOpts = gherkin === undefined ? undefined : resolveGherkinOptions(gherkin);
 
   // Publish the ONE authoritative docs root (F3/F5). This is the exact value the
   // sitemap draft filter resolves internally (`path.resolve(process.cwd(),
@@ -1548,7 +1737,9 @@ export function defineDocKittyIntegrations(options: DocKittyOptions) {
   // caller's explicit `sidebar` still wins; a registry-free site keeps Starlight's
   // bare tree-autogeneration (registrySidebar → undefined). Resolved once here so
   // the value is decided BEFORE the build hooks run.
-  const resolvedSidebar = sidebar ?? registrySidebar(docsDir);
+  // With gherkin on, its section id is threaded in as build-generated (see
+  // `registrySidebar`); off → the call is the unchanged single-argument form.
+  const resolvedSidebar = sidebar ?? registrySidebar(docsDir, gherkinOpts?.section);
 
   // C-004: a sidebar the consumer wrote — through `sidebar` or the `starlight`
   // escape hatch — is authoritative and is never reshaped. Only a sidebar the
@@ -1655,6 +1846,14 @@ export function defineDocKittyIntegrations(options: DocKittyOptions) {
     // glossary-free array + corpus is byte-identical to pre-M4 (NFR-002). WP09 lands
     // the example definitions file; until then this is inert on the example.
     ...(glossaryActive ? [glossaryIntegration(docsDir, base)] : []),
+    // Opt-in gherkin seam (ADR-0046): PREPENDED before Starlight, immediately AFTER
+    // the glossary, ONLY when `gherkin` is set. Every `config:setup` hook runs
+    // before the content-layer sync, so its array position relative to the
+    // glossary is not a correctness constraint; it sits after it so build logs
+    // read glossary → gherkin. It registers NO remark/rehype plugins (generated
+    // pages are plain Markdown on the existing stack), so no plugin-order pin
+    // moves. Omitted entirely when absent — byte-identical array.
+    ...(gherkinOpts ? [gherkinIntegration(gherkinOpts, docsDir, indexBasename)] : []),
     starlight(starlightConfig),
     // Always-on route-shaping seam (FR-011, FR-019..FR-023): serves the data the
     // toolkit's route middleware (registered in `starlightConfig` above) reads,

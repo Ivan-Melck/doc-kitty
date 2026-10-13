@@ -27,8 +27,18 @@ vi.mock('@astrojs/starlight', () => ({
   }),
 }));
 
+// The glossary presence probe is wrapped (real behaviour by default) so the
+// gherkin-placement invariant below can force the glossary-ACTIVE array shape
+// without a `.contextive/definitions.yaml` on disk. Only the array-build probe is
+// overridden, and only per-test via `mockReturnValueOnce`; no hook is run with it.
+vi.mock('../lib/glossary/load.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/glossary/load.js')>();
+  return { ...actual, isGlossaryActive: vi.fn(actual.isGlossaryActive) };
+});
+
 // Imported AFTER the mock is declared (vi.mock is hoisted, so this is safe).
 const { defineDocKittyIntegrations } = await import('../lib/config.js');
+const { isGlossaryActive } = await import('../lib/glossary/load.js');
 
 const EXPECTED_CARRIER_KEYS = ['Footer', 'Head', 'Header', 'MarkdownContent', 'PageTitle'];
 
@@ -103,5 +113,128 @@ describe('defineDocKittyIntegrations components map (seam 3)', () => {
     expect(componentsOf(starlightEntry).Header).toBe(
       '@spec-kitty/doc-toolkit/components/Header.astro',
     );
+  });
+});
+
+/**
+ * WP06 — the opt-in gherkin seam (ADR-0046) must be ZERO-cost when absent and a
+ * pure array insertion when set. The named-integration order, the Starlight config
+ * and every markdown remark/rehype registration are compared off-vs-on, so a
+ * future change that registers the gherkin integration unconditionally, moves it,
+ * or makes it contribute a markdown plugin fails here loudly. (The hook's runtime
+ * behaviour is covered end-to-end in `gherkin-integration.test.ts`.)
+ */
+describe('defineDocKittyIntegrations gherkin opt-in seam (ADR-0046)', () => {
+  const GHERKIN = 'doc-kitty:gherkin';
+  const GLOSSARY = 'doc-kitty:glossary';
+  const STARLIGHT = '@astrojs/starlight';
+  const GHERKIN_OPTS = { sources: ['features'] };
+
+  // The plain-path (no theme/diagrams/markua, glossary-free) named order — the
+  // same pinned baseline `glossary-config.test.ts` guards.
+  const PINNED_BASELINE = [
+    '@astrojs/starlight',
+    'doc-kitty:draft-publication',
+    'doc-kitty:route-shaping',
+    'doc-kitty:toc-rail',
+    'doc-kitty:deck-split',
+    'doc-kitty:base-absolute-links',
+    '@astrojs/sitemap',
+    'doc-kitty:sitemap-order',
+    'doc-kitty:manifest',
+    'doc-kitty:favicon',
+  ];
+
+  interface Named {
+    name: string;
+    hooks?: Record<string, unknown>;
+    __starlightConfig?: unknown;
+  }
+  const named = (integrations: unknown[]): Named[] =>
+    integrations.filter(
+      (i): i is Named =>
+        typeof i === 'object' && i !== null && typeof (i as { name?: unknown }).name === 'string',
+    );
+  const namesOf = (integrations: unknown[]) => named(integrations).map((i) => i.name);
+  const starlightConfigOf = (integrations: unknown[]) =>
+    named(integrations).find((i) => i.name === STARLIGHT)?.__starlightConfig;
+
+  /** Run every doc-kitty `astro:config:setup` hook EXCEPT gherkin's (which reads
+   * the filesystem) and collect the markdown plugin lists in registration order. */
+  function markdownRegistrations(integrations: unknown[]) {
+    const remark: unknown[] = [];
+    const rehype: unknown[] = [];
+    for (const i of named(integrations)) {
+      if (i.name === GHERKIN || !i.name.startsWith('doc-kitty:')) continue;
+      const hook = i.hooks?.['astro:config:setup'] as ((ctx: unknown) => unknown) | undefined;
+      hook?.({
+        updateConfig: (c: { markdown?: { remarkPlugins?: unknown[]; rehypePlugins?: unknown[] } }) => {
+          remark.push(...(c.markdown?.remarkPlugins ?? []));
+          rehype.push(...(c.markdown?.rehypePlugins ?? []));
+        },
+        injectScript: () => {},
+        addWatchFile: () => {},
+        logger: { warn: () => {}, info: () => {} },
+      });
+    }
+    return { remark, rehype };
+  }
+
+  /** Structural fingerprint of a plugin list: functions become `fn:<name>`. */
+  const shapeOf = (value: unknown): unknown =>
+    typeof value === 'function'
+      ? `fn:${value.name}`
+      : Array.isArray(value)
+        ? value.map(shapeOf)
+        : value !== null && typeof value === 'object'
+          ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shapeOf(v)]))
+          : value;
+
+  it('is absent (byte-identical array) when the option is omitted or undefined', () => {
+    const omitted = defineDocKittyIntegrations({ title: 'Docs' });
+    const undef = defineDocKittyIntegrations({ title: 'Docs', gherkin: undefined });
+    expect(namesOf(omitted)).toEqual(PINNED_BASELINE);
+    expect(namesOf(undef)).toEqual(PINNED_BASELINE);
+    expect(starlightConfigOf(undef)).toEqual(starlightConfigOf(omitted));
+  });
+
+  it('adds exactly one doc-kitty:gherkin, immediately before starlight, when set', () => {
+    const names = namesOf(defineDocKittyIntegrations({ title: 'Docs', gherkin: GHERKIN_OPTS }));
+    expect(names.filter((n) => n === GHERKIN)).toHaveLength(1);
+    // A pure insertion: removing it yields the pinned baseline unchanged.
+    expect(names.filter((n) => n !== GHERKIN)).toEqual(PINNED_BASELINE);
+    expect(names.indexOf(GHERKIN)).toBe(names.indexOf(STARLIGHT) - 1);
+  });
+
+  it('sits immediately AFTER the glossary integration when the glossary is active', () => {
+    vi.mocked(isGlossaryActive).mockReturnValueOnce(true);
+    const names = namesOf(
+      defineDocKittyIntegrations({ title: 'Docs', markua: true, gherkin: GHERKIN_OPTS }),
+    );
+    expect(names.indexOf(GHERKIN)).toBe(names.indexOf(GLOSSARY) + 1);
+    expect(names.indexOf(STARLIGHT)).toBe(names.indexOf(GHERKIN) + 1);
+  });
+
+  it('declares only a config:setup hook and leaves the Starlight config unchanged', () => {
+    const off = defineDocKittyIntegrations({ title: 'Docs', markua: true });
+    const on = defineDocKittyIntegrations({ title: 'Docs', markua: true, gherkin: GHERKIN_OPTS });
+    const gherkin = named(on).find((i) => i.name === GHERKIN);
+    expect(Object.keys(gherkin?.hooks ?? {})).toEqual(['astro:config:setup']);
+    expect(starlightConfigOf(on)).toEqual(starlightConfigOf(off));
+  });
+
+  it('leaves every remark/rehype plugin list unchanged (no plugin-order pin moves)', () => {
+    const off = markdownRegistrations(defineDocKittyIntegrations({ title: 'Docs', markua: true }));
+    const on = markdownRegistrations(
+      defineDocKittyIntegrations({ title: 'Docs', markua: true, gherkin: GHERKIN_OPTS }),
+    );
+    // Sanity: the comparison is over a non-trivial stack (markua + always-on seams).
+    expect(off.remark.length).toBeGreaterThan(0);
+    expect(off.rehype.length).toBeGreaterThan(0);
+    // Some seams build their plugin closures per `defineDocKittyIntegrations` call,
+    // so compare by SHAPE (functions → their names, options deep) rather than by
+    // identity: same plugins, same order, same options.
+    expect(shapeOf(on.remark)).toEqual(shapeOf(off.remark));
+    expect(shapeOf(on.rehype)).toEqual(shapeOf(off.rehype));
   });
 });
