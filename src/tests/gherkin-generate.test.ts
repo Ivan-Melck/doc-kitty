@@ -898,6 +898,26 @@ describe('hub text is escaped and titles match the sidebar (review #7)', () => {
     },
   );
 
+  it('a Feature with no description: its name, used as the hub entry text, renders as literal text', () => {
+    const name = '<script>alert(1)</script> :x[y] www.evil.com a@b.cd';
+    const site = makeSite({
+      'features/x.feature': `Feature: ${name}\n\n  Scenario: S\n    Given g\n`,
+    });
+    const root = plan(site).plan.get('README.md') as string;
+    const tree = mdTree(root);
+    const bad: string[] = [];
+    mdWalk(tree, (n) => {
+      if (n.type === 'html' && n.value !== '<!---->') bad.push(`html ${n.value}`);
+      if (n.type === 'link' && !(n.url ?? '').startsWith('./')) bad.push(`link ${n.url}`);
+    });
+    expect(bad).toEqual([]);
+    expect(root).not.toContain('<script>');
+    // `:x[` must not survive as a text directive.
+    expect(root).not.toMatch(/(?<!\\):x\[/);
+    const list = tree.children?.find((n) => n.type === 'list') as MdNode;
+    expect(mdText(list)).toContain(`Behaviour specification for ${name}.`);
+  });
+
   it('the hub H1 is heading-escaped (a trailing " #" is not eaten as a closing sequence)', () => {
     const site = makeSite({ 'features/a #/x.feature': feature('X marks') });
     const hub = [...plan(site).plan].find(([k]) => k.endsWith('/README.md'))?.[1] as string;
