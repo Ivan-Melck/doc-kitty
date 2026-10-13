@@ -125,6 +125,11 @@ describe('example build surfaces the unresolved-collision warning (NFR-007 / R-2
         `expected exactly ${OFFENDING_PAGES.length} pinned collision warnings ` +
           `(one per page in OFFENDING_PAGES); stderr:\n${result.stderr}`,
       ).toBe(OFFENDING_PAGES.length);
+      // This build writes the SHARED `example/dist`: it must carry the site's own
+      // base, not vitest's leaked BASE_URL.
+      const home = readFileSync(new URL('../../example/dist/index.html', import.meta.url), 'utf8');
+      expect(home).toContain('href="/doc-kitty/behaviour/');
+      expect(home).not.toContain('href="/behaviour/');
     },
     180_000,
   );

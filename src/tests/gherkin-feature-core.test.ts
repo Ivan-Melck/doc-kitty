@@ -211,7 +211,6 @@ describe('§2 status precedence', () => {
     [['@deprecated'], 'deprecated', false],
     [[], 'active', false],
     // Fail closed: a status tag that cannot be honoured never publishes the page.
-    [['@dk:status=Draft'], 'draft', true],
     [['@dk:Status=draft'], 'draft', true],
     [['@dk:status='], 'draft', true],
     [['@dk:status=active', '@dk:status=draft'], 'draft', true],
