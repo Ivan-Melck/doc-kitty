@@ -47,7 +47,8 @@
     "dockitty-check-redirect-coverage": "./scripts/check-redirect-coverage.mjs",
     "dockitty-validate-catalog": "./scripts/validate-catalog.mjs",
     "dockitty-new-doc": "./scripts/new-doc.mjs",
-    "dockitty-scaffold": "./scripts/scaffold.mjs"
+    "dockitty-scaffold": "./scripts/scaffold.mjs",
+    "dockitty-generate-feature-pages": "./scripts/generate-feature-pages.mjs"
   },
   "files": [
     "index.ts",
@@ -74,6 +75,8 @@
   "dependencies": {
     "@astrojs/sitemap": "^3.2.0",
     "@beoe/rehype-mermaid": "0.4.2",
+    "@cucumber/gherkin": "42.0.1",
+    "@cucumber/messages": "34.2.1",
     "astro-plantuml": "1.0.0",
     "gray-matter": "^4.0.3",
     "mermaid": "11.17.1",
