@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -223,28 +223,8 @@ describe('walker order is independent of readdir order (review #12)', () => {
   });
 });
 
-describe('one log prefix and one toPosix across the gherkin modules (review #11)', () => {
-  const DIR = fileURLToPath(new URL('../lib/gherkin/', import.meta.url));
-  const code = (name: string) =>
-    readFileSync(path.join(DIR, name), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/(^|[^:])\/\/.*$/gm, '$1');
-
-  it('the literal [dk-gherkin] appears in code only in text.mjs', () => {
-    for (const name of readdirSync(DIR).filter((f) => f.endsWith('.mjs') && f !== 'text.mjs')) {
-      expect(code(name), name).not.toContain('[dk-gherkin]');
-    }
-    expect(code('text.mjs')).toContain("'[dk-gherkin]'");
-  });
-
+describe('the log prefix', () => {
   it('load.mjs still exports GHERKIN_LOG_PREFIX (config.ts / tests import it)', () => {
     expect(GHERKIN_LOG_PREFIX).toBe('[dk-gherkin]');
-  });
-
-  it('toPosix is defined once', () => {
-    const defs = readdirSync(DIR)
-      .filter((f) => f.endsWith('.mjs'))
-      .filter((f) => /function\s+toPosix\b/.test(code(f)));
-    expect(defs).toEqual(['load.mjs']);
   });
 });

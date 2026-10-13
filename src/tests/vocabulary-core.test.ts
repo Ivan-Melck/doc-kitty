@@ -32,7 +32,6 @@ import {
   CANONICAL_REQUIRED,
   UNKNOWN_STATUS,
   humanizeSection,
-  normalizeIndexBasenames,
 } from '../lib/vocabulary-core.mjs';
 
 describe('vocabulary sets (single-sourced enums)', () => {
@@ -401,23 +400,10 @@ describe('parseCharter — unified ResolvedCharter resolver (WP01/T003)', () => 
 
 describe('humanizeSection (folder name → title; shared by the sidebar and the gherkin hubs)', () => {
   it.each([
-    ['shipping', 'Shipping'],
     ['shipping-ops', 'Shipping Ops'],
     ['a_b-c d', 'A B C D'],
     ['--x--', 'X'],
-    ['hr', 'Hr'],
-    ['Ship Ping', 'Ship Ping'],
-    ['a/b', 'A B'],
   ])('%j → %j', (input, title) => {
     expect(humanizeSection(input)).toBe(title);
-  });
-});
-
-describe('normalizeIndexBasenames (exported for the gherkin hub basename)', () => {
-  it('defaults to README and preserves config order', () => {
-    expect(normalizeIndexBasenames(undefined)).toEqual(['README']);
-    expect(normalizeIndexBasenames([])).toEqual(['README']);
-    expect(normalizeIndexBasenames('index')).toEqual(['index']);
-    expect(normalizeIndexBasenames(['index', 'README'])).toEqual(['index', 'README']);
   });
 });

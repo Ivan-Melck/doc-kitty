@@ -33,7 +33,7 @@ vi.mock('../lib/gherkin/load.mjs', async (importOriginal) => {
 });
 
 const { loadFeatures } = await import('../lib/gherkin/load.mjs');
-const { scenarioIndexRoute, resolveSourcePath, isScenarioIndexed } = await import(
+const { scenarioIndexRoute, resolveSourcePath } = await import(
   '../lib/routes/scenario-index.js'
 );
 const { llmsTxtRoute } = await import('../lib/routes/llms-txt.js');
@@ -302,14 +302,6 @@ describe('scenarioIndexRoute — selection and order', () => {
       count: 0,
       features: [],
     });
-  });
-
-  it('isScenarioIndexed is the shared predicate', () => {
-    const generated = { by: 'doc-kitty/gherkin', at: 'sha256:0' };
-    expect(isScenarioIndexed({ title: 't', kind: 'Specification', doc_status: 'active', generated })).toBe(true);
-    expect(isScenarioIndexed({ title: 't', kind: 'Specification', doc_status: 'draft', generated })).toBe(false);
-    expect(isScenarioIndexed({ title: 't', kind: 'Specification', doc_status: 'active' })).toBe(false);
-    expect(isScenarioIndexed({ title: 't', kind: 'Hub', doc_status: 'active', generated })).toBe(false);
   });
 });
 

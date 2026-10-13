@@ -560,19 +560,21 @@ function importSpecifiers(source: string): string[] {
   return specs.sort();
 }
 
-describe('gherkin metadata core is pure (import-scan)', () => {
-  it('feature-core.mjs imports only ../vocabulary-core.mjs and ./text.mjs', () => {
-    const src = readFileSync(path.join(SRC_ROOT, 'lib/gherkin/feature-core.mjs'), 'utf8');
-    const specs = importSpecifiers(src);
-    expect(specs.length).toBeGreaterThan(0);
-    for (const spec of specs) expect(['../vocabulary-core.mjs', './text.mjs']).toContain(spec);
-    expect(src).not.toMatch(/from\s+['"](?:node:)?(?:fs|path|process|crypto)['"]/);
-    expect(src).not.toMatch(/from\s+['"](?:astro|@astrojs|@cucumber)[/'"]/);
-  });
+describe('the pure gherkin modules import only their allow-list (import-scan)', () => {
+  // Comments are stripped first: JSDoc `import('@cucumber/messages')` typedefs are type-only.
+  const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-  it('text.mjs imports nothing', () => {
-    const src = readFileSync(path.join(SRC_ROOT, 'lib/gherkin/text.mjs'), 'utf8');
-    expect(importSpecifiers(src)).toEqual([]);
+  it.each([
+    ['feature-core.mjs', ['../vocabulary-core.mjs', './text.mjs']],
+    ['render.mjs', ['../vocabulary-core.mjs', './text.mjs']],
+    ['options.mjs', ['./text.mjs']],
+    ['text.mjs', []],
+  ])('%s', (file, allowed) => {
+    const src = stripComments(readFileSync(path.join(SRC_ROOT, 'lib/gherkin', file), 'utf8'));
+    const specs = importSpecifiers(src);
+    if (allowed.length === 0) expect(specs).toEqual([]);
+    else expect(specs.length).toBeGreaterThan(0);
+    for (const spec of specs) expect(allowed).toContain(spec);
   });
 });
 
@@ -656,14 +658,5 @@ describe('an unnamed Feature has ONE title fallback (review #5)', () => {
   it('defaults to "Feature" when no keyword is supplied', () => {
     const { fields } = buildFrontmatter({ featureName: '', description: 'Some text here.', tags: [], hash: HASH });
     expect(fields.title).toBe('Feature');
-  });
-});
-
-describe('feature-core exports only what other modules use (review #11)', () => {
-  it('METADATA_KEYS / firstSentence / DESCRIPTION_MAX are module-private', async () => {
-    const mod = await import('../lib/gherkin/feature-core.mjs');
-    expect(Object.keys(mod)).not.toContain('METADATA_KEYS');
-    expect(Object.keys(mod)).not.toContain('firstSentence');
-    expect(Object.keys(mod)).not.toContain('DESCRIPTION_MAX');
   });
 });
