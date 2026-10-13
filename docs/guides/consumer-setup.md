@@ -587,8 +587,9 @@ What happens on each build and dev-server start:
 
 - Every `.feature` is parsed once. A syntax error fails the build with
   `[dk-gherkin] <path>:<line>:<col>`, listing every error in every file.
-- One page per feature and one hub per directory are written into
-  `docs/<section>/`, and pages whose source is gone are removed. The hub file is the
+- One page per feature (drafts included) and one hub per directory with at
+  least one non-draft feature below it are written into `docs/<section>/`, and
+  pages whose source is gone are removed. The hub file is the
   first entry of `indexBasename` (`README.md` by default).
 - The section belongs to the generator. Any file in it without the generator's
   `generated.by` stamp fails the build, so don't point `section` at an authored
@@ -602,12 +603,6 @@ Register the section so it gets a label, a sidebar group and its
 ```yaml
 - { id: behaviour, label: Behaviour, order: 38, type: Specification }
 ```
-
-One gap: the generator itself reads only the legacy `docs/_meta/sections.yaml`.
-It takes two things from it, the root hub's title and the `Mission` subtype that
-`@dk:mission` tags link to. With a charter-only registry the hub title is the
-humanised section id, and `@dk:mission=<slug>` links to `plans/<slug>` with a
-build warning. Use `@dk:related=<full slug>` for mission links in that case.
 
 **Commit the generated pages.** The bare-Node gates (frontmatter, links) read
 files on disk, and reviewers see how a spec change changes the page. Then guard

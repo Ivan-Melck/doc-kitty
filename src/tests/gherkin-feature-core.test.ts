@@ -586,6 +586,27 @@ describe('@dk:status values are validated and doc_status always serialises to a 
     expect(parseMetadataTags(tagsOf(`@dk:status=${value}`, '@wip'), {}).meta.status).toBe('draft');
   });
 
+  it.each([
+    ['Draft', 'draft'],
+    ['ACTIVE', 'active'],
+    ['In-Review', 'in-review'],
+  ])('@dk:status=%s rejected only for its case suggests @dk:status=%s', (value, lower) => {
+    const { meta, warnings } = parseMetadataTags(tagsOf(`@dk:status=${value}`), { file: FILE });
+    expect(meta.status).toBe('active');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(`invalid @dk:status=${value}`);
+    expect(warnings[0]).toContain(`did you mean @dk:status=${lower}?`);
+  });
+
+  it.each(['!x', 'foo:', 'TRUE', 'Null', 'a b'])(
+    '@dk:status=%s (not just a case problem) gets no lower-case suggestion',
+    (value) => {
+      const { warnings } = parseMetadataTags(tagsOf(`@dk:status=${value}`), { file: FILE });
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).not.toContain('did you mean');
+    },
+  );
+
   it.each(['review', 'charter-custom', 'in-review-2', 'durable'])('@dk:status=%s (well-formed) passes through', (value) => {
     const { meta, warnings } = parseMetadataTags(tagsOf(`@dk:status=${value}`), {});
     expect(meta.status).toBe(value);

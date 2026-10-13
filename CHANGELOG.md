@@ -171,7 +171,8 @@ Each item is described in full under Changed.
   ([ADR-0046](docs/adr/0046-gherkin-feature-pages.md)). A new opt-in `gherkin` option on
   `defineDocKittyIntegrations` (`{ sources, section?, sourceRoot?, sourceUrlPrefix? }`) parses every
   `.feature` under `sources` once with `@cucumber/gherkin` and generates one
-  `kind: Specification` page per feature, plus a hub per directory, into
+  `kind: Specification` page per feature, plus a hub per directory holding a
+  published (non-draft) feature, into
   `<docsDir>/<section>/` (default `behaviour`) at `astro:config:setup`. The pages
   are ordinary collection files, so the sidebar, sitemap, RSS, `llms.txt`, the
   agent API and glossary auto-linking pick them up. Feature-level
@@ -180,8 +181,11 @@ Each item is described in full under Changed.
   `agent.priority`); `@wip`/`@deprecated` set the status and other tags pass
   through to `tags`. Output is deterministic (`generated.at` is a source content
   hash), only changed files are rewritten, stale generated pages are pruned, and
-  an authored file in the generated section fails the build. With the option
-  unset the build is byte-identical. See the
+  an authored file in the generated section fails the build. A draft feature
+  (`@wip`, `@dk:status=draft`) still gets its page but is never listed in a hub,
+  and a directory holding only drafts gets no hub at all. With the option
+  unset the build output is unchanged apart from the TOC target-size CSS under
+  **Changed**. See the
   [consumer setup guide](docs/guides/consumer-setup.md#optional-gherkin-feature-pages).
 - **`Specification` joins the canonical `kind` and `type` vocabulary**, for the
   generated pages.
@@ -190,12 +194,31 @@ Each item is described in full under Changed.
   the feature pages without a build, or with `--check` exits 1 listing every
   added, changed, stale or authored path, so CI can fail when committed pages
   drift from their `.feature` sources. Its flags mirror the `gherkin` option.
-- **`validate-frontmatter` recognises generated pages by their `generated.by`
-  stamp** (`doc-kitty/glossary` or `doc-kitty/gherkin`), not only by the
-  `glossary/` path, and keeps exempting them from `type` and, when they carry
-  none, `updated`.
+- **A scenario index for agents** — a new `scenarioIndexRoute` export from
+  `@spec-kitty/doc-toolkit/routes`, mounted at `/api/scenarios.json`, lists every
+  published, agent-discoverable generated feature page with its rules, scenarios
+  (anchors taken from the rendered headings), tags, steps and examples tables,
+  re-parsed from the `.feature` source. Pass it the same `sourceRoot` and
+  `sourceUrlPrefix` as the `gherkin` option. `llmsTxtRoute` adds one
+  `Scenario index: <url>` line only when at least one such page exists, so a site
+  without published feature pages gets a byte-identical `llms.txt`.
+- **`validate-frontmatter` recognises Gherkin feature pages by their
+  `generated.by: "doc-kitty/gherkin"` stamp**, wherever they live, and exempts them
+  from `type` and, when they carry none, `updated`. The glossary codegen writes no
+  stamp, so its pages are still recognised by the existing `glossary/` path rule.
 - **New dependencies:** `@cucumber/gherkin` `42.0.1` and `@cucumber/messages`
   `34.2.1`, exact-pinned.
+
+### Changed
+
+- **Desktop "On this page" links get a 24px minimum target** (WCAG 2.5.8, axe
+  `target-size`) — `toc-rail.css` now gives every desktop TOC link
+  `min-height: 24px` (flex-centred). Starlight's own links were about 23px tall,
+  which a densely nested TOC (a generated feature page's Rule → Scenario entries)
+  fails. This applies to **every** site with a TOC, whether or not it uses the
+  `gherkin` option, so visual baselines of pages with a TOC shift slightly;
+  regenerate them with the "Update a11y baselines" workflow
+  (`update-a11y-baselines.yml`).
 
 ### Fixed
 

@@ -211,6 +211,15 @@ export function planFeaturePages(model, opts) {
   const children = new Map([['', []]]);
   /** @type {Map<string, string>} */
   const dirTitles = new Map([['', sectionLabel]]);
+  /**
+   * Directories (POSIX, '' = section root) with at least one NON-draft feature
+   * somewhere below them: only these get a hub. A draft-only directory's hub
+   * would list nothing, yet be linked from its parent — publishing the very
+   * directory name draft gating is meant to keep out of hubs, sitemaps and the
+   * agent API. Its draft pages are still generated (owned, pruned as usual).
+   */
+  /** @type {Set<string>} */
+  const publishedDirs = new Set(['']);
 
   for (const file of model.files) {
     const feature = file.document.feature;
@@ -275,6 +284,9 @@ export function planFeaturePages(model, opts) {
     // (`hub-children.mjs`, INV-1), and the hub's raw Markdown is served to agents
     // (`/api/pages/<hub>.json`), so a listed draft would leak past draft gating.
     if (fields.doc_status !== 'draft') {
+      for (let depth = 1; depth <= dirs.length; depth += 1) {
+        publishedDirs.add(dirs.slice(0, depth).join('/'));
+      }
       children.get(parent)?.push({
         out,
         title: fields.title,
@@ -297,7 +309,9 @@ export function planFeaturePages(model, opts) {
 
   // A feature page `x.md` beside a generated hub `x/<index>.md` is ONE route
   // (`<section>/x`): the loader keeps one page and silently drops the other, in
-  // either source order. Checked once every directory is known.
+  // either source order. Checked once every directory is known — including a
+  // draft-only directory, which has no hub YET: whether the layout is legal must
+  // not flip when a feature below it is published.
   for (const dir of dirTitles.keys()) {
     if (dir === '') continue;
     const leafSource = claimedBy.get(`${dir}.md`);
@@ -311,8 +325,9 @@ export function planFeaturePages(model, opts) {
   }
 
   // Hubs: link every child directory hub into its parent (titles are known now).
+  // A draft-only directory has no hub, so it is neither planned nor linked.
   for (const dir of dirTitles.keys()) {
-    if (dir === '') continue;
+    if (dir === '' || !publishedDirs.has(dir)) continue;
     const up = dir.split('/').slice(0, -1).join('/');
     const title = /** @type {string} */ (dirTitles.get(dir));
     children.get(up)?.push({
@@ -325,6 +340,7 @@ export function planFeaturePages(model, opts) {
     });
   }
   for (const [dir, list] of children) {
+    if (!publishedDirs.has(dir)) continue;
     const title = /** @type {string} */ (dirTitles.get(dir));
     const description = dir === '' ? HUB_INTRO : hubDescription(title);
     const sorted = [...list].sort((a, b) => compareCodeUnit(a.out, b.out));
@@ -338,10 +354,13 @@ export function planFeaturePages(model, opts) {
         `${PREFIX} output collision: ${claimedBy.get(out)} maps onto the generated hub ${section}/${out}`,
       );
     }
+    // The root hub of an all-draft section has no items: intro only, and still
+    // exactly one trailing newline (markdownlint MD012/MD047).
+    const listing = items.length > 0 ? `\n\n${items.join('\n')}` : '';
     plan.set(
       out,
       `${serializeHubFrontmatter({ title, description, hash })}\n\n` +
-        `# ${escapeHeading(title)}\n\n${HUB_INTRO}\n\n${items.join('\n')}\n`,
+        `# ${escapeHeading(title)}\n\n${HUB_INTRO}${listing}\n`,
     );
   }
 

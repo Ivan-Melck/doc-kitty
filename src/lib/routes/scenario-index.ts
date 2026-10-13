@@ -46,11 +46,12 @@ import type { APIRoute } from 'astro';
 import { getCollection, render } from 'astro:content';
 import type { GherkinDocument, Scenario, Tag } from '@cucumber/messages';
 import type { DocKittyFrontmatter } from '../metadata.js';
-import { isAgentDiscoverable, sectionOf, slugFromEntryId } from '../metadata.js';
+import { sectionOf, slugFromEntryId } from '../metadata.js';
 import { compareCodeUnit } from '../vocabulary-core.mjs';
 import { feedsSurface, resolveSectionRegistry, sectionFeeds } from '../sections.js';
 import { GHERKIN_LOG_PREFIX, loadFeatures, type FeatureFile } from '../gherkin/load.mjs';
 import { GENERATED_BY } from '../gherkin/feature-core.mjs';
+import { isScenarioIndexed } from './scenario-index-filter.js';
 import { absolute, docsRoot } from './shared.js';
 
 export interface ScenarioIndexRouteOptions {
@@ -119,19 +120,7 @@ export interface RenderedHeading {
   text: string;
 }
 
-/**
- * True for a page the scenario index lists: a GENERATED feature page (not a
- * hand-authored `kind: Specification` page) that is published and not opted
- * out of agent discovery. Shared with `llms.txt`, which advertises the index
- * only when at least one such page exists.
- */
-export function isScenarioIndexed(data: DocKittyFrontmatter): boolean {
-  return (
-    data.kind === 'Specification' &&
-    data.generated?.by === GENERATED_BY &&
-    isAgentDiscoverable(data)
-  );
-}
+export { isScenarioIndexed } from './scenario-index-filter.js';
 
 /** A resource carrying a URL scheme (`https://…`), as opposed to a path. */
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
@@ -163,17 +152,35 @@ function tagNames(tags: readonly Tag[] | undefined): string[] {
 }
 
 /**
- * Comparison key for a heading's text. The rendered heading `text` has been
- * through `remark-smartypants` (curly quotes, dashes, ellipses) and entity
- * decoding, so both sides are folded to the same plain form before comparing.
+ * Comparison key for a heading's text. Both sides — the `.feature` scenario
+ * title and Astro's `render(entry).headings[].text` — go through this SAME fold,
+ * which undoes every rewrite the build applies to a heading's text so the two
+ * compare equal:
+ *
+ *  - `rehypeHeadingIds` (`@astrojs/markdown-remark`, `rehype-collect-headings.js`)
+ *    does `text += value.replace(/\{/g, "${")` for every non-MDX heading, so
+ *    `GET /orders/{id}` arrives as `GET /orders/${id}`. A run of `$` before a
+ *    `{` is dropped on BOTH sides (a literal `${x}` in a name arrives as
+ *    `$${x}`; both fold to `{x}`).
+ *  - `remark-smartypants`: ``` ``x'' ``` and `"x"` → `“x”`, `'x'` → `‘x’`,
+ *    `...` and `. . .` → `…`, `--`/`---` → dashes. Quotes fold to straight
+ *    `"`/`'` (backtick quotes included), ellipses to `...`, any dash run to `-`.
+ *  - entity decoding (`&amp;` → `&`) needs no fold: the text is already decoded.
+ *
+ * The fold is lossy (two names that differ only in quote style fold together),
+ * which is safe because matching is also positional: each scenario takes the
+ * NEXT matching heading at its depth, in document order.
  */
 function headingKey(text: string): string {
   return text
     .normalize('NFC')
-    .replace(/[‘’‚‛]/g, "'")
-    .replace(/[“”„‟]/g, '"')
+    .replace(/\$+\{/g, '{')
+    .replace(/[‘’‚‛′`]/g, "'")
+    .replace(/''/g, '"')
+    .replace(/[“”„‟″]/g, '"')
     .replace(/…/g, '...')
-    .replace(/[–—]/g, '-')
+    .replace(/\. ?\. ?\./g, '...')
+    .replace(/[‐‑‒–—―]/g, '-')
     .replace(/-+/g, '-')
     .replace(/\s+/g, ' ')
     .trim();

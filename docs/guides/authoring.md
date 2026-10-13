@@ -181,7 +181,9 @@ file; the toolkit writes the page. The design is in
 listed in `gherkin.sources`. The example site keeps them in `example/features/`.
 The directory layout carries over: `features/shipping/book-consignment.feature`
 becomes `docs/behaviour/shipping/book-consignment.md` (`behaviour` is the default
-section), and every directory gets a generated hub page.
+section). Every directory with at least one published (non-draft) feature below
+it gets a generated hub page. A directory holding only `@wip` or
+`@dk:status=draft` features gets no hub, and its parent hub doesn't link it.
 
 Don't edit or add files under the generated section. Changes are overwritten on
 the next run, and any file in that folder without the generator's
@@ -193,7 +195,8 @@ too:
 - a feature file named `log.feature`, because `log.md` is the reserved change-log
   name the docs loader skips;
 - a feature file next to a directory of the same name (`shipping.feature` beside
-  `shipping/`), because the page and that directory's hub would share one URL;
+  `shipping/`), because the page and that directory's hub would share one URL
+  (this fails even while the directory holds only drafts and has no hub yet);
 - two sources that map to the same output path.
 
 ### Metadata tags

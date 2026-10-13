@@ -24,7 +24,7 @@ related:
 The opt-in `gherkin` preset reads a repository's Gherkin `.feature` files, parses
 each one once with the official `@cucumber/gherkin` parser, and writes one
 `kind: Specification` Markdown page per feature into the docs collection, plus a
-hub page per directory. From there the pages are ordinary collection files. The
+hub page per directory that holds a published feature. From there the pages are ordinary collection files. The
 sidebar, sitemap, RSS, `llms.txt`, the agent API, glossary auto-linking and the
 `related`/`audience` blocks all pick them up with no new wiring. This page maps
 the surface. The decision behind it is
@@ -84,7 +84,8 @@ pages from both. ADR-0046 records the rejected alternatives.
 
 The integration, `doc-kitty:gherkin`, exists only when the `gherkin` option is
 set. With the option absent the integrations array and the markdown config are
-byte-identical to a site without it. When present, it sits immediately after the
+byte-identical to a site without it (the TOC target-size rule in `toc-rail.css`
+ships to every site regardless). When present, it sits immediately after the
 glossary integration and before Starlight, so the log reads glossary, then
 gherkin. Its section id is appended to the registry sidebar's build-generated ids,
 so a first build with no committed output doesn't warn about a missing section.
@@ -104,20 +105,25 @@ function on its flags, so `--section ../../x` fails there too:
 the toolkit's single `slug()` rule in `vocabulary-core.mjs`. Every source directory
 is generated under the same section root.
 
-Hubs are written for the section root and for every directory that holds a
-feature anywhere below it. The hub file is `<first indexBasename>.md`, so
+Hubs are written for the section root and for every directory with at least one
+non-draft feature anywhere below it. The hub file is `<first indexBasename>.md`, so
 `README.md` by default. Using the first configured basename makes the hub collapse
 to its directory route under either loader setting. The basename list and the
 index-name test come from `vocabulary-core.mjs` (`normalizeIndexBasenames`,
 `isIndexPath`), the same rule the loader and the frontmatter gate use. A hub has
 `kind: Hub`, `doc_status: active`, a one-line intro and a list of its children
-(`- [<title>](./<slug>/) — <description>`), sorted by output path.
+(`- [<title>](./<slug>/) — <description>`), sorted by output path. If every
+feature in the section is a draft, the root hub is still written, with the intro
+and no list.
 
 A hub lists sub-directory hubs and every feature that isn't a draft. A draft
 feature (`@wip` or `@dk:status=draft`) still gets its page, but its hub leaves it
 out. The hub layout's own child listing already drops drafts, and the hub's raw
 Markdown is served to agents through `/api/pages/<hub>.json`, so a listed draft
-would get past draft gating.
+would get past draft gating. For the same reason a directory whose features are
+all drafts gets no hub and no link from its parent hub, so its name isn't
+published either. Its draft pages are still generated, owned and pruned like any
+other.
 
 The root hub's title is the section's label in the section registry, or the
 humanised section id. A directory hub's title is the humanised directory name, and
@@ -215,7 +221,8 @@ points that matter for maintainers:
   ignored. A dangling persona, mission, ADR or related ref fails through the
   existing link and audience gates, not here.
 - **Status values.** A `@dk:status` value must match `^[a-z][a-z0-9-]*$` and not
-  be a YAML keyword such as `null` or `true`. That still admits charter-defined
+  be a YAML keyword such as `null` or `true`. A value rejected only for its case
+  (`Draft`) gets a did-you-mean hint with the lower-case form. That still admits charter-defined
   statuses like `in-review`, which pass through and get the frontmatter gate's
   usual warning. Any other value (`!x`, `[x]`, `foo:`, `*a`, `1e3`) is ignored with
   a warning, and the status falls back to `@wip`/`@deprecated` or `active`. As a
@@ -324,7 +331,10 @@ Each scenario has `name`, `rule` (`null` outside a rule), `anchor`, `line`, its 
 trimmed) and `examples` (`{ name, tags, header, rows }`; rows are not expanded).
 The route re-parses each page's `.feature` with the same loader, so pass it the
 `sourceRoot` and `sourceUrlPrefix` you gave `gherkin`. It reads each anchor from the
-page's rendered headings and never computes a slug. A missing source, a source
+page's rendered headings and never computes a slug. Scenarios are matched to
+headings in document order, after folding both sides the same way: Astro's
+heading text turns `{` into `${`, and smartypants curls quotes and rewrites dashes
+and ellipses. A missing source, a source
 changed since generation, or a scenario with no rendered heading fails the build.
 `llms.txt` adds a `Scenario index:` line only when at least one such page exists,
 so a site without Gherkin pages is unaffected.
@@ -347,8 +357,9 @@ so a site without Gherkin pages is unaffected.
   section folder itself (`<docsDir>/<section>`) is used as found. If it is a
   symlink, generation writes through it.
 - **The scenario index is a separate mount.** `llms.txt` advertises
-  `/api/scenarios.json` whenever generated feature pages exist, but the integration
-  doesn't inject the route, so mount `scenarioIndexRoute` when you turn `gherkin` on
+  `/api/scenarios.json` whenever at least one published, agent-discoverable
+  generated feature page exists, but the integration doesn't inject the route, so
+  mount `scenarioIndexRoute` when you turn `gherkin` on
   (every other doc-kitty route is mounted the same way).
 
 ## Related follow-ups

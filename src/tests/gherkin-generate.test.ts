@@ -25,6 +25,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import matter from 'gray-matter';
 import { unified } from 'unified';
@@ -959,5 +960,112 @@ describe('the empty-sources warning names the source directories (review #13)', 
     const site = makeSite({ 'features/.keep': '', 'more/.keep': '' });
     const { warnings } = gen(site, { sources: ['features', 'more'] });
     expect(warnings).toEqual(['[dk-gherkin] no .feature files found in features, more; 0 previously generated page(s) will be removed']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Final review #2: draft-only directories and sections
+// ---------------------------------------------------------------------------
+
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+
+/** markdownlint-cli2 with the repo config over every `.md` under `dir`. */
+function markdownlint(dir: string): { status: number | null; output: string; files: number } {
+  const files = Object.keys(readTree(dir)).filter((f) => f.endsWith('.md'));
+  const run = spawnSync(
+    path.join(REPO_ROOT, 'node_modules/.bin/markdownlint-cli2'),
+    [...files.map((f) => `:${path.join(dir, ...f.split('/'))}`), '--config', '.markdownlint.jsonc'],
+    { cwd: REPO_ROOT, encoding: 'utf8' },
+  );
+  return { status: run.status, output: `${run.stdout ?? ''}${run.stderr ?? ''}`, files: files.length };
+}
+
+function expectLintClean(dir: string): void {
+  const { status, output, files } = markdownlint(dir);
+  // Non-vacuity: every generated page was actually linted.
+  expect(output).toMatch(new RegExp(`Linting: ${files} files?\\b`));
+  expect(status, output).toBe(0);
+  expect(output).toMatch(/Summary: 0 issues?\b/);
+}
+
+describe('draft-only directories and sections (final review #2)', () => {
+  it('a directory whose subtree holds only drafts gets no hub and no link from its parent', () => {
+    const site = makeSite({
+      'features/a/alpha.feature': feature('Alpha'),
+      'features/a/secret-plans/one.feature': feature('One', { tags: '@wip' }),
+      'features/a/secret-plans/deeper/two.feature': feature('Two', { tags: '@dk:status=draft' }),
+    });
+    const { result } = gen(site);
+    const tree = readTree(site.outDir);
+    // The draft pages are still generated, under the section …
+    expect(fm(tree['a/secret-plans/one.md'] as string).doc_status).toBe('draft');
+    expect(fm(tree['a/secret-plans/deeper/two.md'] as string).doc_status).toBe('draft');
+    // … but neither draft-only directory gets a hub, and nothing names them.
+    expect(Object.keys(tree)).toEqual([
+      'README.md',
+      'a/README.md',
+      'a/alpha.md',
+      'a/secret-plans/deeper/two.md',
+      'a/secret-plans/one.md',
+    ]);
+    expect(hubLinks(tree['a/README.md'] as string)).toEqual(['./alpha/']);
+    expect(tree['a/README.md']).not.toMatch(/secret/i);
+    expect(tree['README.md']).not.toMatch(/secret/i);
+    // Owned, so the next identical run is a no-op and nothing is authored.
+    expect(scanOutputDir(site.outDir)).toEqual({ owned: Object.keys(tree), authored: [] });
+    expect(result.written).toEqual(Object.keys(tree));
+    expect(gen(site).result.written).toEqual([]);
+    expectLintClean(site.outDir);
+  });
+
+  it('publishing a draft adds the hub; deleting the drafts prunes the directory', () => {
+    const site = makeSite({
+      'features/a/alpha.feature': feature('Alpha'),
+      'features/a/sub/one.feature': feature('One', { tags: '@wip' }),
+    });
+    gen(site);
+    expect(existsSync(path.join(site.outDir, 'a/sub/README.md'))).toBe(false);
+
+    writeTree(site.root, { 'features/a/sub/one.feature': feature('One') });
+    const publish = gen(site);
+    expect(publish.result.written).toEqual(['a/README.md', 'a/sub/README.md', 'a/sub/one.md']);
+    expect(hubLinks(readTree(site.outDir)['a/README.md'] as string)).toEqual(['./alpha/', './sub/']);
+
+    writeTree(site.root, { 'features/a/sub/one.feature': feature('One', { tags: '@wip' }) });
+    const unpublish = gen(site);
+    expect(unpublish.result.removed).toEqual(['a/sub/README.md']);
+    expect(hubLinks(readTree(site.outDir)['a/README.md'] as string)).toEqual(['./alpha/']);
+
+    unlinkSync(path.join(site.root, 'features/a/sub/one.feature'));
+    const remove = gen(site);
+    expect(remove.result.removed).toEqual(['a/sub/one.md']);
+    expect(existsSync(path.join(site.outDir, 'a/sub'))).toBe(false);
+  });
+
+  it('a section whose features are ALL drafts gets a root hub with the intro and no list', () => {
+    const site = makeSite({
+      'features/top.feature': feature('Top', { tags: '@wip' }),
+      'features/a/one.feature': feature('One', { tags: '@wip' }),
+      'features/a/b/two.feature': feature('Two', { tags: '@dk:status=draft' }),
+    });
+    gen(site);
+    const tree = readTree(site.outDir);
+    expect(Object.keys(tree)).toEqual(['README.md', 'a/b/two.md', 'a/one.md', 'top.md']);
+    const root = tree['README.md'] as string;
+    expect(hubLinks(root)).toEqual([]);
+    expect(root.endsWith("\n\nBehaviour specifications generated from the repository's Gherkin feature files.\n")).toBe(true);
+    expectLintClean(site.outDir);
+  });
+
+  it('no generated hub ever ends with a blank line', () => {
+    const site = makeSite({
+      'features/x/one.feature': feature('One', { tags: '@wip' }),
+      'features/y/two.feature': feature('Two'),
+    });
+    gen(site);
+    for (const [rel, text] of Object.entries(readTree(site.outDir))) {
+      expect(text.endsWith('\n') && !text.endsWith('\n\n'), rel).toBe(true);
+    }
+    expectLintClean(site.outDir);
   });
 });

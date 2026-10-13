@@ -135,7 +135,8 @@ describe('generateFeaturePages codegen guard (WP05, risk R3)', () => {
       'billing/invoice.md',
       'shipping/README.md',
       'shipping/book-consignment.md',
-      'shipping/customs/README.md',
+      // `customs/` holds only a draft: its page is generated, but a draft-only
+      // directory gets no hub (final review #2).
       'shipping/customs/clear-goods.md',
     ]);
     expect(readTree(b)).toEqual(tree);
@@ -145,7 +146,7 @@ describe('generateFeaturePages codegen guard (WP05, risk R3)', () => {
     const root = makeSources();
     const dir = path.join(tmp('dk-gherkin-guard-same-'), 'behaviour');
     const first = generate(root, dir);
-    expect(first.written).toHaveLength(7);
+    expect(first.written).toHaveLength(6);
     const tree = readTree(dir);
     const stamps = mtimes(dir);
 

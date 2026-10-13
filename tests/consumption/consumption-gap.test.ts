@@ -79,10 +79,11 @@ const STATIC_KINDS = ['.ts', '.astro', '.css'];
 function capture(
   cmd: string,
   args: string[],
-  opts: { cwd?: string } = {},
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): { status: number; output: string } {
   const res = spawnSync(cmd, args, {
     cwd: opts.cwd,
+    env: opts.env ?? process.env,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
@@ -302,7 +303,15 @@ function buildFixture(fixtureDir: string): { status: number; output: string } {
   if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
   const astroBin = path.join(fixtureDir, 'node_modules', '.bin', 'astro');
   if (!existsSync(astroBin)) return { status: 1, output: `astro binary missing at ${astroBin}` };
-  return capture(astroBin, ['build'], { cwd: fixtureDir });
+  // Vitest's OWN process env carries a `BASE_URL` variable (it mirrors Vite's
+  // client `import.meta.env.BASE_URL` for Node-environment tests, defaulting to
+  // `/`). Inherited by this REAL `astro build`, it would silently override the
+  // fixture's configured `base` for every SSR-rendered `import.meta.env.BASE_URL`
+  // read. Strip it so the child computes its own base from the fixture's
+  // `astro.config.mjs` (mirrors `src/tests/example-adopter.test.ts`).
+  const childEnv = { ...process.env };
+  delete childEnv.BASE_URL;
+  return capture(astroBin, ['build'], { cwd: fixtureDir, env: childEnv });
 }
 
 // ── suite ─────────────────────────────────────────────────────────────────────

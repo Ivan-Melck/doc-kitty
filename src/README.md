@@ -29,7 +29,9 @@ src/
 │       ├── rss.ts           # rssRoute        -> rss.xml
 │       ├── llms-txt.ts      # llmsTxtRoute    -> llms.txt
 │       ├── agent-index.ts   # agentIndexRoute -> /api/index.json
-│       └── agent-page.ts    # agentPageRoute  -> /api/<slug>.json
+│       ├── agent-page.ts    # agentPageRoute  -> /api/<slug>.json
+│       ├── bibliography.ts  # bibliographyRoute -> /api/bibliography.json
+│       └── scenario-index.ts # scenarioIndexRoute -> /api/scenarios.json
 ├── scripts/
 │   ├── scaffold.mjs             # emit the 12-section DocKitty tree
 │   ├── validate-frontmatter.mjs # CI gate: validate a docs/ tree
@@ -46,7 +48,7 @@ src/
 | `defineDocKittyConfig(opts)`   | `./config`          | Starlight config preset.                  |
 | `docKittyDocsSchema`           | `./schema`          | zod schema for page frontmatter.          |
 | `docKittyDocsLoader(opts)`     | `./schema`          | Content loader with README-as-index.      |
-| `rssRoute`, `llmsTxtRoute`, `agentIndexRoute`, `agentPageRoute` | `./routes` | Astro endpoint handlers. |
+| `rssRoute`, `llmsTxtRoute`, `agentIndexRoute`, `agentPageRoute`, `bibliographyRoute`, `scenarioIndexRoute` | `./routes` | Astro endpoint handlers. |
 
 ## Tests
 
