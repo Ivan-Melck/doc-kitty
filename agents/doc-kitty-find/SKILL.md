@@ -19,7 +19,7 @@ exist yet and say where it should live.
      link list.
    - If the site is built, use the **agent-API**: `GET /api/index.json` for the
      whole map, or `GET /api/pages/<id>.json` for one page's metadata + raw
-     Markdown. Filter by `type`, `tags`, `status`, and `agent.keywords`.
+     Markdown. Filter by `type`, `kind`, `tags`, `doc_status`, and `agent.keywords`.
    - Otherwise grep frontmatter `title`/`description`/`tags` across `docs/**`.
 3. **Report** the best-matching file path and route, or — if none fits — the
    section and filename where it *should* be created, and hand off to
@@ -28,8 +28,10 @@ exist yet and say where it should live.
 ## Tips
 
 - A `README.md` maps to its directory route (README-as-index).
-- `status: draft` pages are excluded from the built site and agent-API — check
-  the source tree, not just the API, when a doc seems missing.
+- `doc_status: draft` pages are left out of the agent-API, `llms.txt`,
+  `rss.xml` and `sitemap.xml`, and out of the built site entirely when it is
+  built with `DK_PUBLISH_DRAFTS=off` — check the source tree, not just the API,
+  when a doc seems missing.
 - Terms live in `context/domain.md`; decisions in `adr/`; present-tense design in
   `architecture/`; future work in `plans/`.
 - Behaviour specs, when a site turns on the `gherkin` option, are generated pages

@@ -35,13 +35,16 @@ first.
 
 ## Frontmatter
 
-Required: `title`, `description`, `status` (`draft` unless told otherwise),
-`updated` (today), `type` (section type). Always stamp:
+Required: `title`, `description` (one sentence, at most 180 characters),
+`doc_status` (`draft` unless told otherwise), `updated` (today, `YYYY-MM-DD`).
+Also write `type` (the section type; derived from the section registry when
+omitted) and `kind` (how to read the page: `How-To`, `Reference`,
+`Explanation`, `Hub`, `ADR`, `Changelog`, …). Always stamp:
 
 ```yaml
 generated:
   by: agent/doc-kitty-write
-  at: <ISO8601>
+  at: "2026-10-14T08:00:00Z"   # quoted: an unquoted timestamp parses as a date and fails validation
 ```
 
 Add optional fields **only when genuinely inferable, never fabricated**:
@@ -54,6 +57,6 @@ Never set `verified` — that's a human action.
 ## ADR rules
 
 Never edit an accepted ADR — write a new one to supersede it. Number sequentially
-(`NNNN-short-kebab-title.md`). Frontmatter `status` records the *document*
+(`NNNN-short-kebab-title.md`). Frontmatter `doc_status` records the *document*
 lifecycle (`active`); the *decision* status (Proposed/Accepted/…) lives in the
 body `## Status` and the `adr/README.md` table.

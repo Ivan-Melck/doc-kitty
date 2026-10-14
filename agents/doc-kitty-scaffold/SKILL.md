@@ -43,12 +43,13 @@ before writing anything — it defines the sections, frontmatter, and twists.
 ---
 title: Short descriptive title
 description: One sentence describing what this document contains.
-status: draft
+doc_status: draft
 updated: <today, YYYY-MM-DD>
 type: <section type — Context, Architecture, ADR, …>
+kind: Hub            # a section README.md; other stubs take their page kind
 generated:
   by: agent/doc-kitty-scaffold
-  at: <ISO8601>
+  at: "<ISO 8601 timestamp>"   # keep the quotes: unquoted, YAML reads a date and validation fails
 ---
 ```
 

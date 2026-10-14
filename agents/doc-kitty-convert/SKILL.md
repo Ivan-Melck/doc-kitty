@@ -13,8 +13,9 @@ Read [`../../docs/context/convention.md`](../../docs/context/convention.md) firs
 The tree is already the twelve sections but uses frontmatter-free `index.md`.
 
 1. For each `index.md`, `git mv` it to `README.md` in the same directory.
-2. Add the required frontmatter to each new `README.md` (`title`, `description`,
-   `status`, `updated`, `type` = the section's type). The bundle-root
+2. Add the required frontmatter to each new `README.md` (`title`, `description`
+   of at most 180 characters, `doc_status`, `updated`, `type` = the section's
+   type, `kind: Hub`). The bundle-root
    `docs/README.md` keeps `okf_version: "0.2"` and stays exempt from `type`.
 3. Ensure every non-index file carries a valid `type` (OKF's hard requirement).
 4. Leave `log.md` frontmatter-free.
@@ -32,8 +33,9 @@ The tree is already the twelve sections but uses frontmatter-free `index.md`.
 
 ## Always
 
-- Stamp `generated: { by: agent/doc-kitty-convert, at: <ISO8601> }` on files you
-  write or regenerate. Never fabricate optional metadata.
+- Stamp `generated: { by: agent/doc-kitty-convert, at: "<ISO 8601 timestamp>" }`
+  on files you write or regenerate; quote the timestamp, or YAML reads it as a
+  date and validation fails. Never fabricate optional metadata.
 - Validate at the end: `node src/scripts/validate-frontmatter.mjs docs`.
 - Point `AGENTS.md` / `CLAUDE.md` at `docs/README.md`.
 - Report what moved, what was split, and any content that needs a human decision.
